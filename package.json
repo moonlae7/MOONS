@@ -7,7 +7,9 @@
     "build": "next build --webpack",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "start:host": "next start -H 0.0.0.0 -p 3000",
+    "smoke": "node --env-file=.env.local --experimental-strip-types scripts/smoke.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.9",

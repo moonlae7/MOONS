@@ -104,7 +104,7 @@ export async function linkEntry(id: string) {
   const candidates: {self: number; other: typeof others[number]; score: number}[] = [];
   nodes.forEach((_, i) => {
     others.map(o => ({self: i, other: o, score: cosine(vectors[i], o.embedding)}))
-      .filter(c => c.score >= Number(process.env.LINK_THRESHOLD || 0.42))
+      .filter(c => c.score >= Number(process.env.LINK_THRESHOLD || 0.36))
       .sort((x, y) => y.score - x.score).slice(0, 3).forEach(c => candidates.push(c));
   });
   const top = candidates.sort((x, y) => y.score - x.score).slice(0, 12);
@@ -123,6 +123,12 @@ export async function linkEntry(id: string) {
       [newId(), row.space_id, id, nodes[c.self].id, c.other.entry_id, c.other.node_id, p.kind, p.reason.slice(0, 100), c.score]);
   }
   log('linked', id, used.size);
+}
+
+export async function relinkAll(spaceId: string) {
+  const rows = await q<{id: string}>(`select id from entries where space_id = $1 and hidden = false and status = 'done' order by created_at asc`, [spaceId]);
+  for (const r of rows) await linkEntry(r.id).catch(error => log('relink failed', r.id, (error as Error).message));
+  log('relinked', rows.length);
 }
 
 // ---------- read models ----------
@@ -158,7 +164,13 @@ export async function thought(id: string): Promise<ThoughtDTO | null> {
        (select nodes from analyses where entry_id = e.id order by created_at desc limit 1) as other_nodes
      from links l join entries e on e.id = case when l.from_entry = $1 then l.to_entry else l.from_entry end
      where l.from_entry = $1 or l.to_entry = $1`, [id]);
-  const related: RelatedNode[] = linkRows.filter(l => !l.other_hidden).map(l => {
+  const seenPair = new Set<string>();
+  const related: RelatedNode[] = linkRows.filter(l => !l.other_hidden).filter(l => {
+    const key = l.from_entry === id ? `${l.from_node}|${l.to_entry}|${l.to_node}` : `${l.to_node}|${l.from_entry}|${l.from_node}`;
+    if (seenPair.has(key)) return false;
+    seenPair.add(key);
+    return true;
+  }).map(l => {
     const out = l.from_entry === id;
     const otherNodeId = out ? l.to_node : l.from_node;
     const node = l.other_nodes?.find(n => n.id === otherNodeId);

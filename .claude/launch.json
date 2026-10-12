@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {"name": "moons-dev", "runtimeExecutable": "npx", "runtimeArgs": ["next", "dev", "--webpack", "--hostname", "127.0.0.1", "-p", "3100"], "port": 3100},
+    {"name": "moons-prod", "runtimeExecutable": "npx", "runtimeArgs": ["next", "start", "--hostname", "127.0.0.1", "-p", "3100"], "port": 3100}
+  ]
+}

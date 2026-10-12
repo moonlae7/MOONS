@@ -1,3 +1,4 @@
+export {};
 // End-to-end check against real OpenAI with a throwaway PGlite DB.
 // node --env-file=.env.local --experimental-strip-types scripts/smoke.ts
 process.env.PGLITE_DIR = `./.data/smoke-${Date.now()}`;

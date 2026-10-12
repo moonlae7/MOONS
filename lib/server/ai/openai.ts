@@ -54,8 +54,11 @@ export const openai: MoonsAI = {
   async moderate(text) {
     try {
       const res = await call('/moderations', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({model: 'omni-moderation-latest', input: text})}, 15000);
-      const body = await res.json() as {results?: {flagged?: boolean}[]};
-      return !!body.results?.[0]?.flagged;
+      // "flagged" alone is too eager for casual Korean ("AI랑 싸움"); hold only clear cases.
+      const body = await res.json() as {results?: {category_scores?: Record<string, number>}[]};
+      const scores = body.results?.[0]?.category_scores ?? {};
+      const strict = ['sexual/minors', 'hate/threatening', 'harassment/threatening', 'self-harm/instructions', 'violence/graphic', 'illicit/violent'];
+      return Object.entries(scores).some(([k, v]) => strict.includes(k) ? v > 0.5 : v > 0.85);
     } catch { return false; } // moderation outage should not block input; admins can still hide
   },
 };
