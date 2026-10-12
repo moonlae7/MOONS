@@ -1,0 +1,32 @@
+import {validUniverse,isBaseline,type UniverseState,type UniverseView,type SpatialBaseline} from './universe.ts';
+import {isChat,type ChatThread,type Profile} from './chat.ts';
+export type MediaType = 'book' | 'paper' | 'article' | 'video' | 'custom';
+export const structures = ['지식나열','인과구조','비교구조','주장-근거','이항대립','문학','IRAC','ANT'] as const;
+export type Structure = typeof structures[number];
+export const structureLabels:Record<Structure,string> = {'지식나열':'Knowledge map','인과구조':'Cause & effect','비교구조':'Comparison','주장-근거':'Claim & evidence','이항대립':'Opposing ideas','문학':'Literary','IRAC':'IRAC','ANT':'Actor network'};
+export type Update = {id:string;text:string;createdAt:string;recheck?:{resolved:boolean;reason:string}};
+export type GNode = {id:string;text:string;role:string;source:number[];empty:boolean;updates:Update[]};
+export type Signal = {id:string;nodeId:string;kind:'misunderstanding'|'study';reason:string;state:'open'|'resolved'|'dismissed'};
+export type Analysis = {structure:Structure;nodes:GNode[];edges:{from:string;to:string}[];signals:Signal[];suggestedPlanets:string[];model:string;promptVersion:string;createdAt:string};
+export type Entry = {id:string;kind:'dump'|'media';mediaType?:MediaType;title?:string;meta?:{author?:string;publishedAt?:string;readAt?:string;url?:string;source?:string;doi?:string};body:string;sentences:string[];locked:boolean;createdAt:string;analysis?:Analysis;analyses?:Analysis[];status:'saved'|'analyzing'|'done'|'failed';planetIds:string[];example?:boolean};
+export type Planet = {id:string;name:string;position:{x:number;y:number};entryCount:number;openSignalRatio:number;color:string};
+export type Store = {version:1;entries:Entry[];planets:Planet[];universe?:UniverseState;views?:UniverseView[];profile?:Profile;chats?:ChatThread[];activeChatId?:string;baselines?:SpatialBaseline[]};
+export const uid = () => crypto.randomUUID();
+export function splitSentences(body:string){if(!body.trim())return [];return body.match(/[^\n.!?。！？]+(?:[.!?。！？]+|$)/gu)?.map(s=>s.trim()).filter(Boolean) ?? [body];}
+export function makeEntry(body:string, extras:Partial<Entry> = {}):Entry {return {...extras,id:uid(),kind:extras.kind??'dump',body,sentences:splitSentences(body),locked:true,createdAt:new Date().toISOString(),status:'saved',planetIds:extras.planetIds??[]};}
+const roles:Record<Structure,string[]>={'지식나열':['Idea','Related idea','Open question'],'인과구조':['Cause','Process','Effect'],'비교구조':['First perspective','Second perspective','Criteria'],'주장-근거':['Claim','Evidence','Supporting detail'],'이항대립':['One side','Other side','Question'],'문학':['Scene','Character and emotion','Interpretation'],'IRAC':['Issue','Rule','Facts','Application','Conclusion'],'ANT':['Actor','Relationship','Another actor']};
+// UI fixture only: no semantic assessment and no external AI request.
+export function mockAnalysis(entry:Entry, structure:Structure='지식나열'):Analysis {
+ const nodes:GNode[]=entry.sentences.map((text,i)=>({id:uid(),text,role:roles[structure][i%roles[structure].length],source:[i],empty:false,updates:[]}));
+ const blank:GNode={id:uid(),text:'',role:roles[structure].at(-1)!,source:[],empty:true,updates:[]}; nodes.push(blank);
+ return {structure,nodes,edges:nodes.slice(1).map((node,i)=>({from:nodes[i].id,to:node.id})),signals:[{id:uid(),nodeId:blank.id,kind:'study',reason:'Demo placeholder, not an AI-detected knowledge gap.',state:'open'},...(entry.example&&nodes.length>2?[{id:uid(),nodeId:nodes[1].id,kind:'misunderstanding' as const,reason:'Example signal for testing the UI, not a factual assessment.',state:'open' as const}]:[])],suggestedPlanets:[],model:'local-ui-demo',promptVersion:'mock-v1',createdAt:new Date().toISOString()};
+}
+export function addUpdate(entry:Entry,nodeId:string,text:string):Entry {
+ if(!entry.analysis||!text.trim()) return entry;
+ return {...entry,analysis:{...entry.analysis,nodes:entry.analysis.nodes.map(n=>n.id===nodeId?{...n,updates:[...n.updates,{id:uid(),text:text.trim(),createdAt:new Date().toISOString()}]}:n)}};
+}
+export function tagEntry(entry:Entry,planetIds:string[]):Entry{return {...entry,planetIds:[...new Set(planetIds)]};}
+export function withStats(store:Store):Store {return {...store,planets:store.planets.map(p=>{const entries=store.entries.filter(e=>e.planetIds.includes(p.id));const signals=entries.flatMap(e=>e.analysis?.signals??[]);return {...p,entryCount:entries.length,openSignalRatio:signals.length?signals.filter(s=>s.state==='open').length/signals.length:0};})};}
+export function initialStore():Store {return {version:1,entries:[],planets:[{id:'p-learning',name:'Learning',position:{x:29,y:39},entryCount:0,openSignalRatio:0,color:'#adc5ef'},{id:'p-creative',name:'Creative',position:{x:71,y:61},entryCount:0,openSignalRatio:0,color:'#d3c6ec'},{id:'p-everyday',name:'Everyday',position:{x:55,y:24},entryCount:0,openSignalRatio:0,color:'#c9dccb'}]};}
+export function exampleEntries():Entry[]{return [makeEntry('좋은 질문은 정답을 찾는 것보다 오래 남는다. 알고 있다고 생각한 것을 내 말로 설명하면 빈 곳이 보인다. 그 빈 곳부터 다시 배워보고 싶다.',{title:'내 말로 설명한다는 것',example:true,planetIds:['p-learning']}),makeEntry('산책할 때는 생각이 조금 느슨해진다. 목적 없이 걷는 시간이 오히려 새로운 아이디어를 데려오는 것 같다.',{title:'산책과 생각 사이',kind:'media',mediaType:'book',meta:{author:'예시 저자'},example:true,planetIds:['p-creative','p-everyday']}),makeEntry('오늘은 완성하지 않아도 기록하기. 작게 남긴 생각들이 언젠가 서로 연결되지 않을까?',{title:'작은 기록의 힘',example:true,planetIds:['p-everyday']})];}
+export function parseStore(raw:string):Store {const value=JSON.parse(raw);if(value?.version!==1||!Array.isArray(value.entries)||!Array.isArray(value.planets)||!value.entries.every((e:Entry)=>typeof e.id==='string'&&typeof e.body==='string'&&Array.isArray(e.sentences)&&Array.isArray(e.planetIds))||!value.planets.every((p:Planet)=>typeof p.id==='string'&&typeof p.name==='string'&&Number.isFinite(p.position?.x)&&Number.isFinite(p.position?.y)))throw Error('저장 형식이 맞지 않습니다.');return withStats({...value,baselines:Array.isArray(value.baselines)?value.baselines.filter(isBaseline):[],chats:Array.isArray(value.chats)?value.chats.filter(isChat):[],profile:typeof value.profile?.username==='string'&&typeof value.profile?.displayName==='string'?value.profile:undefined,activeChatId:typeof value.activeChatId==='string'?value.activeChatId:undefined,universe:validUniverse(value.universe)?value.universe:undefined,views:Array.isArray(value.views)?value.views.filter((v:UniverseView)=>validUniverse(v)&&typeof v.id==='string'&&typeof v.name==='string'):[],entries:value.entries.map((e:Entry)=>e.status==='analyzing'?{...e,status:'failed'}:e)});}
