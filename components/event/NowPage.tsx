@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
+import {useRouter} from 'next/navigation';
 import {useEffect, useRef, useState} from 'react';
 import {ArrowLeft, ArrowRight, ArrowUp, Check, LoaderCircle, Mic, Square} from 'lucide-react';
-import {LineLogo, MoonCharacter} from '@/components/Brand';
+import {LineLogo} from '@/components/Brand';
 import {api, participantId, postJson, SPACE_ID} from '@/lib/client';
 import type {Question} from '@/lib/thought';
 
@@ -17,6 +18,7 @@ function pickMime() {
 
 export default function NowPage({questions}: {questions: Question[]}) {
   // Icebreaking first: open on a random question so answers spread across planets. Free input is the last card.
+  const router = useRouter();
   const cards = [...questions, FREE];
   const [index, setIndex] = useState(0);
   useEffect(() => { if (questions.length > 1) setIndex(Math.floor(Math.random() * questions.length)); }, [questions.length]);
@@ -24,7 +26,6 @@ export default function NowPage({questions}: {questions: Question[]}) {
   const [nickname, setNickname] = useState('');
   const [busy, setBusy] = useState<'' | 'text' | 'voice'>('');
   const [error, setError] = useState('');
-  const [sent, setSent] = useState<Sent | null>(null);
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), tick = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -45,7 +46,9 @@ export default function NowPage({questions}: {questions: Question[]}) {
       } else {
         res = await api<Sent>(`/api/spaces/${SPACE_ID}/entries`, postJson({participantId: participantId(), nickname, questionId: card.id || null, text}));
       }
-      setSent(res); setText('');
+      setText('');
+      // Straight to the scan: the result page waits for the structure, then shows it.
+      router.push(`/t/${res.id}?scan=1${res.redacted ? `&r=${res.redacted}` : ''}`);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(''); }
   }
@@ -77,26 +80,11 @@ export default function NowPage({questions}: {questions: Question[]}) {
     } catch { setError('마이크를 쓸 수 없어요. 브라우저 권한을 확인하거나 글로 적어주세요.'); }
   }
 
-  if (sent) return <div className="ev ev-now">
-    <header className="now-top"><span className="ev-mark"><LineLogo/></span></header>
-    <main className="now-done">
-      <MoonCharacter large/>
-      <h1>착지했어요</h1>
-      <p>큰 화면을 보세요. 방금 넣은 답이 우주에 별로 떠올랐어요. 비슷한 생각을 한 사람과 곧 이어져요.</p>
-      <blockquote>“{sent.text}”</blockquote>
-      {sent.redacted > 0 && <p className="ev-note">키나 연락처로 보이는 {sent.redacted}곳은 가려서 저장했어요.</p>}
-      <div className="now-actions">
-        <Link className="ev-primary" href={`/t/${sent.id}`}>내 생각의 모양 보기<ArrowRight size={17}/></Link>
-        <button className="ev-secondary" onClick={() => { setSent(null); setIndex((index + 1) % cards.length); }}>하나 더 넣기</button>
-      </div>
-    </main>
-  </div>;
-
   return <div className="ev ev-now">
     <header className="now-top"><span className="ev-mark"><LineLogo/></span><Link href="/universe" className="ev-back right">우주 보기</Link></header>
     <main className="now-main">
-      <h1>질문 하나에 답해주세요</h1>
-      <p className="now-sub">보내는 순간 큰 화면 우주에 별 하나로 떠요. 넘기면서 마음에 드는 질문을 골라도 돼요.</p>
+      <h1>당신의 뇌를<br/>스캔해 드립니다</h1>
+      <p className="now-sub">질문 하나에 말로 답해 주세요. MOONS가 당신이 이해한 모양 그대로 그려 드려요. 답은 큰 화면 우주에 별로도 떠요.</p>
 
       <section className="now-card" aria-live="polite">
         <div className="now-card-top"><span className="ev-eyebrow">{card.id ? card.kind : '자유'} · {index + 1} / {cards.length}</span>
@@ -113,9 +101,9 @@ export default function NowPage({questions}: {questions: Question[]}) {
         <textarea id="now-text" value={text} onChange={e => setText(e.target.value)} maxLength={1000} rows={5} placeholder={recording ? '듣고 있어요…' : '말하거나 적어주세요. 정리 안 해도 돼요.'} disabled={recording || !!busy}/>
         <div className="now-buttons">
           <button type="button" className={`now-mic ${recording ? 'on' : ''}`} onClick={toggleRecord} disabled={!!busy} aria-pressed={recording}>
-            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>알아듣는 중…</> : <><Mic size={17}/>말로 넣기</>}
+            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>알아듣는 중…</> : <><Mic size={17}/>말로 답하기</>}
           </button>
-          <button type="submit" className="now-send" disabled={!text.trim() || !!busy || recording} aria-label="넣기">{busy === 'text' ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
+          <button type="submit" className="now-send" disabled={!text.trim() || !!busy || recording} aria-label="스캔하기">{busy === 'text' ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
         </div>
       </form>
       {error && <p className="ev-error" role="alert">{error}</p>}

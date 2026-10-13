@@ -16,6 +16,8 @@ export default function ThoughtPage({id}: {id: string}) {
   const [pick, setPick] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [choosing, setChoosing] = useState(false);
+  const [scan, setScan] = useState<{on: boolean; redacted: number}>({on: false, redacted: 0});
+  useEffect(() => { const p = new URLSearchParams(window.location.search); setScan({on: p.get('scan') === '1', redacted: Number(p.get('r')) || 0}); }, []);
 
   const load = useCallback(async () => {
     try { setT(await api<ThoughtDTO>(`/api/entries/${id}`)); setError(''); }
@@ -71,13 +73,13 @@ export default function ThoughtPage({id}: {id: string}) {
 
   return <div className="ev ev-thought">
     <header className="ev-bar">
-      <Link href="/live" className="ev-back"><ArrowLeft size={16}/>오늘의 머릿속</Link>
+      <Link href="/universe" className="ev-back"><ArrowLeft size={16}/>우주 보기</Link>
       <span className="ev-mark"><LineLogo/></span>
-      <Link href="/now" className="ev-back right">생각 넣기<ArrowUpRight size={15}/></Link>
+      <Link href="/now" className="ev-back right">다른 질문으로 스캔<ArrowUpRight size={15}/></Link>
     </header>
     {!t ? <div className="ev-center">{error ? <p className="ev-error">{error}</p> : <LoaderCircle className="spin"/>}</div> : <main className="th-main">
       <section className="th-head">
-        <span className="ev-eyebrow">{t.kind === 'decision' ? '결정' : t.kind === 'quiz' ? '개발 퀴즈 답' : '생각'} · {timeLabel(t.createdAt)}{t.input === 'voice' && <> · <Mic size={12}/> 말로 넣음</>}</span>
+        <span className="ev-eyebrow">{t.kind === 'decision' ? '결정' : t.status === 'done' ? '뇌 스캔 완료' : t.kind === 'quiz' ? '개발 퀴즈 답' : '생각'} · {timeLabel(t.createdAt)}{t.input === 'voice' && <> · <Mic size={12}/> 말로 넣음</>}</span>
         {question && <p className="th-question">Q. {question.text}</p>}
         {t.status === 'done' && t.analysis ? <>
           <h1>이렇게 이해하신 것 같아요</h1>
@@ -87,9 +89,10 @@ export default function ThoughtPage({id}: {id: string}) {
             <span className="chip study">{signalLabels.study} {counts.study}</span>
             <span className="chip moon">다른 순간의 나 {t.related.length}</span>
           </div>
-        </> : t.status === 'failed' ? <><h1>모양을 그리지 못했어요</h1><p className="th-reason">AI 응답이 늦거나 끊겼어요. 원문은 그대로 보관돼 있고, 운영진이 다시 돌릴 수 있어요.</p></>
+          {scan.redacted > 0 && <p className="ev-note">키나 연락처로 보이는 {scan.redacted}곳은 가려서 저장했어요.</p>}
+        </> : t.status === 'failed' ? <><h1>{scan.on ? '스캔하지 못했어요' : '모양을 그리지 못했어요'}</h1><p className="th-reason">AI 응답이 늦거나 끊겼어요. 원문은 그대로 보관돼 있고, 운영진이 다시 돌릴 수 있어요.</p></>
           : t.status === 'held' ? <><h1>이 생각은 화면에 올라가지 않았어요</h1><p className="th-reason">공개 화면에 부적절할 수 있는 표현이 있어 보류했어요.</p></>
-          : <div className="th-wait"><MoonCharacter large/><div><h1>모양을 그리는 중이에요</h1><p className="th-reason">고치지 않고, 이해한 모양 그대로 그리고 있어요. 보통 10초 안팎 걸려요.</p></div></div>}
+          : <div className={`th-wait ${scan.on ? 'scan' : ''}`}><span className="th-scanner"><MoonCharacter large/></span><div><h1>{scan.on ? '뇌를 스캔하는 중이에요' : '모양을 그리는 중이에요'}</h1><p className="th-reason">{scan.on ? '고치지 않고, 말한 그대로 이해한 모양을 찾고 있어요. 비교인지, 흐름인지, 개념 나무인지. 보통 10초 안팎 걸려요.' : '고치지 않고, 이해한 모양 그대로 그리고 있어요. 보통 10초 안팎 걸려요.'}</p></div></div>}
       </section>
 
       {t.analysis && t.status === 'done' && <section className="th-shape-area" aria-label="생각의 구조">
@@ -142,7 +145,7 @@ export default function ThoughtPage({id}: {id: string}) {
           {t.crossroad.chosenPath ? <div className="th-decision">
             <span className="ev-eyebrow">결정이 머릿속에 착지했어요</span>
             <p>결정: {t.crossroad.paths.find(p => p.id === t.crossroad!.chosenPath)?.title}{t.crossroad.chosenReason ? ` · ${t.crossroad.chosenReason}` : ''}</p>
-            <div className="th-decision-links">{t.crossroad.decisionEntry && <Link className="ev-link" href={`/t/${t.crossroad.decisionEntry}`}>결정 노드 보기 <ArrowUpRight size={14}/></Link>}<Link className="ev-link" href="/live">머릿속에서 보기 <ArrowUpRight size={14}/></Link></div>
+            <div className="th-decision-links">{t.crossroad.decisionEntry && <Link className="ev-link" href={`/t/${t.crossroad.decisionEntry}`}>결정 노드 보기 <ArrowUpRight size={14}/></Link>}<Link className="ev-link" href="/universe">우주에서 보기 <ArrowUpRight size={14}/></Link></div>
           </div> : pick && <form className="th-choose" onSubmit={e => { e.preventDefault(); choose(); }}>
             <label htmlFor="choose-reason">왜 이 길인가요? (선택)</label>
             <input id="choose-reason" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="예: 이미 토스를 쓰고 있고 오늘 안에 고칠 수 있어서"/>

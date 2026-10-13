@@ -1,7 +1,7 @@
 import {shapes, type Planet} from '../thought.ts';
 import {checklistIds, checklistText} from './checklist.ts';
 
-export const PROMPT_VERSION = 'event-2026-10-14.2';
+export const PROMPT_VERSION = 'event-2026-10-14.3';
 
 // ---------- structure ----------
 const SHAPE_GUIDE = `
@@ -25,7 +25,7 @@ export function structureSystem(planets: Planet[]) {
 2. 빈 곳을 채우지 않는다. 사용자가 말하지 않은 단계나 편이 그 모양에서 빠져 있으면 empty=true, text="" 노드를 두고, 그 노드에 study 신호를 단다. 빈 노드의 내용을 지어내지 않는다.
 3. 틀린 곳은 신호만 단다. 정답을 노드나 이유에 쓰지 않는다. 신호 reason은 70자 이내 한국어.
 4. 사용자의 망설임("~것 같은데", "뭐였더라", "잘 모르겠", "아마", "?")은 hesitant=true로 표시하고 study 신호를 단다 (basis="hesitation").
-5. misunderstanding 신호는 두 경우에만: (a) 아래 체크리스트 항목과 어긋남 → basis="checklist:<id>", (b) 사용자 글 안에서 앞뒤가 모순됨 → basis="logic". 체크리스트에 없는 결제·보안 주장은 하지 않는다. 확신이 없으면 신호를 달지 않는다.
+5. misunderstanding 신호는 두 경우에만: (a) 아래 체크리스트 항목과 어긋남 → basis="checklist:<id>", (b) 사용자 글 안에서 앞뒤가 모순됨 → basis="logic". 체크리스트에 없는 사실 주장(결제·보안·과학 상식·개념)은 하지 않는다. 확신이 없으면 신호를 달지 않는다.
 6. 그 밖의 study 신호: 맥락이 비거나 흐릿한 곳 → basis="gap".
 7. 노드 나누기: 한 문장 안에 "~하고", "~니까", "~해서", "~었고"로 이어진 단계나 생각이 여럿이면 절 단위로 잘라 각각 노드로 만든다 (잘라낸 조각도 원문 그대로). 한 노드에는 생각 하나만.
 8. 모양 고르기: 연결어("~하고", "~니까", "그래서", "그다음")가 하나라도 생각들을 잇고 있으면 파편이 아니다. 파편은 정말로 서로 이어지지 않은 조각들일 때만.
@@ -41,7 +41,7 @@ ${SHAPE_GUIDE}
 모행성 목록 (id: 이름)
 ${planets.map(p => `- ${p.id}: ${p.name}`).join('\n')}
 
-결제·보안 체크리스트 (misunderstanding 근거로만 사용)
+체크리스트: 결제·보안·과학 상식·개념 (misunderstanding 근거로만 사용)
 ${checklistText}`;
 }
 
@@ -112,10 +112,10 @@ export const crossroadsSystem = `너는 MOONS의 갈림길 안내자다. MOONS�
 - 각 길마다: title(20자 이내), what_changes(이 길을 가면 무엇이 달라지는지 한 문장), need_to_know(이 길을 고르려면 알아야 할 것 1~3개, 질문이나 개념 이름으로), cost(시간·비용·난이도 한 줄), basis(근거가 된 노드 참조 ID들).
 - basis에는 입력에 주어진 참조 ID("self:노드id" 또는 "link:링크id")만 쓴다. 지어내지 않는다.
 - situation: 사용자의 지금 상황을 사용자의 말을 근거로 한 문장으로 읽는다 (쓰는 도구, 진행 단계 등).
-- 결제·보안 내용은 체크리스트 범위 안에서만 말한다.
+- 결제·보안·과학 상식 같은 사실은 체크리스트 범위 안에서만 말한다.
 - 한국어로 쓴다.
 
-결제·보안 체크리스트
+체크리스트
 ${checklistText}`;
 
 export const crossroadsSchema = {

@@ -9,7 +9,7 @@
   font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif; letter-spacing:-.02em;
 }
 .ev *{box-sizing:border-box}
-.ev h1,.ev h2,.ev h3{text-wrap:balance}
+.ev h1,.ev h2,.ev h3{text-wrap:balance;word-break:keep-all}
 .ev-eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--ev-muted);display:inline-flex;align-items:center;gap:4px}
 .ev-note{font-size:13px;color:var(--ev-muted)}
 .ev-error{font-size:14px;color:var(--ev-warn);background:var(--ev-warn-wash);border-radius:10px;padding:10px 12px}
@@ -299,3 +299,8 @@
 @media (prefers-reduced-motion:reduce){.lv-tw,.lv-throb,.lv-arriving{animation:none!important}.lv-nova{display:none}}
 .lv-home{pointer-events:auto;text-decoration:none;color:var(--lv-muted)}
 .lv-home:hover{color:var(--lv-ink)}
+/* Brain scan: a light sweeps over the moon while the structure is drawn. */
+.th-scanner{position:relative;display:inline-flex;border-radius:50%;overflow:hidden;flex:none}
+.th-wait.scan .th-scanner::after{content:'';position:absolute;left:-10%;right:-10%;height:28%;top:-30%;background:linear-gradient(to bottom,transparent,rgba(123,164,248,.55),transparent);animation:th-scan 1.6s ease-in-out infinite}
+@keyframes th-scan{to{top:100%}}
+@media (prefers-reduced-motion:reduce){.th-wait.scan .th-scanner::after{animation:none;display:none}}

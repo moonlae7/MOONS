@@ -241,11 +241,11 @@ export default function LivePage({space}: {space: SpaceInfo}) {
         <span>방금 · {timeLabel(latest.createdAt)}</span>
         <p>“{latest.preview}”</p>
       </div>}
-      {data && !data.thoughts.length && <div className="lv-empty">아직 조용해요. 오른쪽 아래 QR로 첫 질문에 답해주세요.</div>}
+      {data && !data.thoughts.length && <div className="lv-empty">아직 조용해요. 오른쪽 아래 QR을 찍고 뇌를 스캔해 보세요.</div>}
 
       <aside className="lv-join">
-        {nowUrl && <img src={`/api/qr?url=${encodeURIComponent(nowUrl)}`} alt="질문에 답하기 QR 코드"/>}
-        <div><strong>QR로 답하기</strong><span>{nowUrl.replace(/^https?:\/\//, '')}</span></div>
+        {nowUrl && <img src={`/api/qr?url=${encodeURIComponent(nowUrl)}`} alt="뇌 스캔 받기 QR 코드"/>}
+        <div><strong>뇌 스캔 받기</strong><span>{nowUrl.replace(/^https?:\/\//, '')}</span></div>
         <MoonCharacter/>
       </aside>
 

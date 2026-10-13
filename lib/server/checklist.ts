@@ -12,6 +12,13 @@ export const checklist = [
   {id: 'refund', title: '취소와 환불', note: '결제만 만들고 취소 흐름이 없으면 운영에서 막힌다. 주문 상태에 취소를 포함한다.'},
   {id: 'rls', title: 'Supabase anon key와 RLS', note: 'anon key는 공개돼도 되도록 설계됐지만, RLS가 꺼져 있으면 누구나 테이블을 읽고 쓸 수 있다.'},
   {id: 'service-key', title: '서버 전용 키', note: 'service role key 같은 관리자 키는 RLS를 무시하므로 절대 프론트에 두지 않는다.'},
+  // Brain-scan questions (concept and trivia). Common misconceptions the scan may point at.
+  {id: 'sky', title: '하늘이 파란 이유', note: '햇빛이 공기 분자에 부딪히면 파장이 짧은 파란빛이 더 많이 흩어진다(레일리 산란). 바다를 비춰서 파란 것이 아니다.'},
+  {id: 'season', title: '계절이 바뀌는 이유', note: '지구 자전축이 약 23.5도 기울어 있어 햇빛이 드는 각도와 낮의 길이가 달라진다. 태양과의 거리 때문이 아니다. 북반구 여름에 지구는 오히려 태양에서 조금 더 멀다.'},
+  {id: 'lift', title: '비행기가 뜨는 이유', note: '날개가 공기를 아래로 밀어내고 날개 위아래에 압력 차가 생겨 양력이 생긴다. 엔진이 위로 밀어 올리는 것이 아니다. 위아래 공기가 끝에서 동시에 만나야 해서 위쪽이 빨라진다는 설명은 흔한 오해다.'},
+  {id: 'moon-face', title: '달이 같은 면만 보이는 이유', note: '달의 자전 주기와 공전 주기가 같아서다(조석 고정). 달이 자전하지 않아서가 아니다.'},
+  {id: 'llm', title: 'LLM이 다음 말을 고르는 방식', note: '학습한 패턴으로 다음 토큰이 올 확률을 계산해 고른다. 정답이 저장된 데이터베이스에서 꺼내오거나 매번 인터넷을 검색하는 것이 기본 동작은 아니다.'},
+  {id: 'api', title: 'API', note: '프로그램끼리 정해진 약속(요청과 응답의 형식)으로 기능이나 데이터를 주고받는 창구다. 웹 서버만 API인 것은 아니다.'},
 ] as const;
 
 export const checklistIds = checklist.map(c => c.id);
