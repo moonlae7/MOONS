@@ -67,6 +67,8 @@ export async function processEntry(id: string) {
       log('structure retry', id, verified.issues.length, 'issues');
     }
     const value = verified?.ok ? verified.value : fragmentsFallback(row.sentences, lastPlanets.filter(p => space.planets.some(pl => pl.id === p)));
+    const anchor = questionPlanet(space, row.question_id);
+    if (anchor) value.planetIds = [...new Set([anchor, ...value.planetIds])].slice(0, 2);
     await q(`insert into analyses (id, entry_id, structure, structure_reason, nodes, edges, signals, planet_ids, model, prompt_version, fallback)
       values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10,$11)`,
     [newId(), id, value.structure, value.structureReason, json(value.nodes), json(value.edges), json(value.signals), json(value.planetIds), model, PROMPT_VERSION, !verified?.ok]);
@@ -132,6 +134,12 @@ export async function relinkAll(spaceId: string) {
 }
 
 // ---------- read models ----------
+// An answer to a question belongs to that question's planet right away, even before (or without) analysis.
+export function questionPlanet(space: SpaceInfo, questionId: string | null | undefined) {
+  const id = space.questions.find(x => x.id === questionId)?.planetId;
+  return id && space.planets.some(p => p.id === id) ? id : null;
+}
+
 export async function universe(space: SpaceInfo): Promise<UniverseDTO> {
   const rows = await q<EntryRow & {structure: string | null; planet_ids: string[] | null; signals: ThoughtAnalysis['signals'] | null}>(
     `select e.*, a.structure, a.planet_ids, a.signals from entries e
@@ -146,7 +154,7 @@ export async function universe(space: SpaceInfo): Promise<UniverseDTO> {
     if (!pairs.has(key) || l.kind === 'contradicts') pairs.set(key, {a: l.from_entry, b: l.to_entry, kind: l.kind});
   }
   const thoughts = rows.map(r => ({
-    id: r.id, kind: r.kind, status: r.status, preview: preview(r.body), planetIds: r.planet_ids ?? [],
+    id: r.id, kind: r.kind, status: r.status, preview: preview(r.body), planetIds: r.planet_ids?.length ? r.planet_ids : [questionPlanet(space, r.question_id)].filter((x): x is string => !!x),
     openSignals: (r.signals ?? []).filter(s => s.state === 'open').length, structure: (r.structure as ThoughtAnalysis['structure']) ?? null, createdAt: iso(r.created_at),
   }));
   return {space, thoughts, links: [...pairs.values()], stats: {thoughts: thoughts.length, links: pairs.size, openSignals: thoughts.reduce((s, t) => s + t.openSignals, 0)}, now: new Date().toISOString()};

@@ -262,3 +262,40 @@
 .ad-status.held{color:var(--ev-study);font-weight:700}
 .ad-list p{font-size:15px;line-height:1.55}
 .ad-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* /live cosmos theme (default on the projector). Each thought is a star, each topic a glowing cluster.
+   Press d to cycle cosmos, light, dark. */
+.ev-live.cosmos{--lv-bg:#03040A;--lv-ink:#EEF1FA;--lv-muted:#98A2BC;--lv-line:#C8D6FF;--lv-orbit:transparent;
+  background:radial-gradient(120% 100% at 58% 46%,#0E0C20 0%,#05060E 60%,#020308 100%)}
+.ev-live.cosmos .lv-glow{opacity:.55}
+.ev-live.cosmos .lv-cluster{transition:r 1.2s cubic-bezier(.3,1.4,.5,1)}
+.ev-live.cosmos .lv-pname{font-size:21px;font-weight:700;fill:#F3F5FF;letter-spacing:-.3px}
+.ev-live.cosmos .lv-pcount{fill:#AEB8D2}
+.ev-live.cosmos .lv-pname,.ev-live.cosmos .lv-pcount,.ev-live.cosmos .lv-zone{paint-order:stroke;stroke:#03040A;stroke-width:5px;stroke-linejoin:round}
+.ev-live.cosmos .lv-zone{fill:#8C96B0}
+.ev-live.cosmos .lv-link{stroke:#BFD0FF;stroke-opacity:.09;stroke-width:1}
+.ev-live.cosmos .lv-link.contradicts{stroke:#FF8A6B;stroke-opacity:.5;stroke-dasharray:5 5}
+.ev-live.cosmos .lv-link.fills_gap{stroke:#8FB3FF;stroke-opacity:.42;stroke-width:1.3}
+.ev-live.cosmos .lv-link.same_mistake{stroke:#F2C14E;stroke-opacity:.4}
+.ev-live.cosmos .lv-link.decides{stroke:#C3A4FF;stroke-opacity:.5;stroke-width:1.4}
+.ev-live.cosmos .lv-link.fresh{stroke-opacity:.95;stroke-dasharray:1}
+.ev-live.cosmos .lv-thought:hover .lv-core{fill:#FFF8E1}
+.ev-live.cosmos .lv-thought:hover .lv-halo{fill-opacity:1}
+.lv-tw{animation:lv-twinkle 4s ease-in-out infinite}
+@keyframes lv-twinkle{0%,100%{opacity:1}50%{opacity:.25}}
+.lv-throb{fill:none;stroke:#FF7A59;stroke-width:1.4;animation:lv-throb 2.4s ease-in-out infinite}
+@keyframes lv-throb{0%,100%{stroke-opacity:.25}50%{stroke-opacity:.9}}
+.lv-nova{fill:none;stroke-width:2;animation:lv-nova 1.8s ease-out both}
+@keyframes lv-nova{from{r:3px;stroke-opacity:1}to{r:70px;stroke-opacity:0}}
+.lv-arriving{animation:lv-twinkle 1.2s ease-in-out infinite}
+.ev-live.cosmos .lv-head h1{text-shadow:0 0 1.4cqw rgba(140,165,255,.35)}
+.ev-live.cosmos .lv-ticker p{text-shadow:0 0 1cqw rgba(3,4,10,.9)}
+.ev-live.cosmos .lv-legend i{border-top-color:#BFD0FF;opacity:.45}
+.ev-live.cosmos .lv-legend i.contradicts{border-top-color:#FF8A6B;opacity:1}
+.ev-live.cosmos .lv-legend i.fills_gap{border-top-color:#8FB3FF;opacity:1}
+.ev-live.cosmos .lv-legend i.ring{border:1.4px solid #FF7A59;opacity:1}
+.ev-live.cosmos .lv-join,.ev-live.cosmos .lv-tip{background:rgba(9,12,26,.62);border:1px solid rgba(220,228,255,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.ev-live.cosmos .lv-join img{background:#fff;border-radius:.4cqw;padding:.3cqw}
+@media (prefers-reduced-motion:reduce){.lv-tw,.lv-throb,.lv-arriving{animation:none!important}.lv-nova{display:none}}
+.lv-home{pointer-events:auto;text-decoration:none;color:var(--lv-muted)}
+.lv-home:hover{color:var(--lv-ink)}

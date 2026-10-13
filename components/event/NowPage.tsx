@@ -16,8 +16,10 @@ function pickMime() {
 }
 
 export default function NowPage({questions}: {questions: Question[]}) {
-  const cards = [FREE, ...questions];
+  // Icebreaking first: open on a random question so answers spread across planets. Free input is the last card.
+  const cards = [...questions, FREE];
   const [index, setIndex] = useState(0);
+  useEffect(() => { if (questions.length > 1) setIndex(Math.floor(Math.random() * questions.length)); }, [questions.length]);
   const [text, setText] = useState('');
   const [nickname, setNickname] = useState('');
   const [busy, setBusy] = useState<'' | 'text' | 'voice'>('');
@@ -80,7 +82,7 @@ export default function NowPage({questions}: {questions: Question[]}) {
     <main className="now-done">
       <MoonCharacter large/>
       <h1>착지했어요</h1>
-      <p>큰 화면을 보세요. 방금 넣은 생각이 머릿속 어딘가에 내려앉고 있어요.</p>
+      <p>큰 화면을 보세요. 방금 넣은 답이 우주에 별로 떠올랐어요. 비슷한 생각을 한 사람과 곧 이어져요.</p>
       <blockquote>“{sent.text}”</blockquote>
       {sent.redacted > 0 && <p className="ev-note">키나 연락처로 보이는 {sent.redacted}곳은 가려서 저장했어요.</p>}
       <div className="now-actions">
@@ -91,10 +93,10 @@ export default function NowPage({questions}: {questions: Question[]}) {
   </div>;
 
   return <div className="ev ev-now">
-    <header className="now-top"><span className="ev-mark"><LineLogo/></span><Link href="/live" className="ev-back right">머릿속 보기</Link></header>
+    <header className="now-top"><span className="ev-mark"><LineLogo/></span><Link href="/universe" className="ev-back right">우주 보기</Link></header>
     <main className="now-main">
-      <h1>이 사람의 머릿속에<br/>생각 하나 넣어주세요</h1>
-      <p className="now-sub">오늘 여기 있는 모두가 결제를 처음 붙이는 바이브코더 한 사람의 생각이 돼요.</p>
+      <h1>질문 하나에 답해주세요</h1>
+      <p className="now-sub">보내는 순간 큰 화면 우주에 별 하나로 떠요. 넘기면서 마음에 드는 질문을 골라도 돼요.</p>
 
       <section className="now-card" aria-live="polite">
         <div className="now-card-top"><span className="ev-eyebrow">{card.id ? card.kind : '자유'} · {index + 1} / {cards.length}</span>
