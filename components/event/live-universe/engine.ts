@@ -36,6 +36,10 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
   const nebula = createNebula(renderer, camera);
   const background = createStarfield(renderer.getPixelRatio(), compact);
   scene.add(background);
+  // Thoughts and their links live in one group, so a hand can pull them all in or spread them out.
+  const content = new THREE.Group();
+  scene.add(content);
+  let spread = 1, spreadTarget = 1;
   let layout: UniverseLayout3 = {clusters: [], stars: [], links: []};
   let thoughts: ReturnType<typeof createThoughts> | null = null;
   let connections: THREE.Group | null = null;
@@ -81,6 +85,11 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
       if (t === 1) flight = null;
       dirty = true;
     }
+    if (Math.abs(spreadTarget - spread) > .002) {
+      spread += (spreadTarget - spread) * (reduced ? 1 : .2);
+      content.scale.setScalar(spread);
+      dirty = true;
+    }
     const changed = controls.update(dt);
     if (!dirty && !moving && !changed) return;
     dirty = false;
@@ -95,7 +104,7 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
       if (qualitySamples === 50 && qualityTotal / qualitySamples > 24) {lowQuality = true; resize();}
     }
     for (const cluster of layout.clusters) {
-      projection.set(...cluster.position).project(camera);
+      projection.set(...cluster.position).multiplyScalar(spread).project(camera);
       const visible = projection.z > -1 && projection.z < 1 && Math.abs(projection.x) < .9 && Math.abs(projection.y) < .78;
       callbacks.project(cluster.id, (projection.x * .5 + .5) * host.clientWidth, (-projection.y * .5 + .5) * host.clientHeight + 18, visible);
     }
@@ -105,7 +114,7 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
   function focus(next: UniverseSelection) {
     selection = next;
     const position = selectionPosition(layout, next);
-    const target = position ? new THREE.Vector3(...position) : homeTarget.clone();
+    const target = position ? new THREE.Vector3(...position).multiplyScalar(spread) : homeTarget.clone();
     const direction = camera.position.clone().sub(controls.target).normalize();
     const destination = position ? target.clone().add(direction.multiplyScalar(compact ? 76 : 48)) : home.clone();
     if (reduced) {camera.position.copy(destination); controls.target.copy(target); flight = null; controls.update();}
@@ -131,15 +140,19 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
     if (event.type === 'pointercancel' || gesture || !down || down.id !== event.pointerId || !thoughts) {down = null; return;}
     down = null;
     const rect = canvas.getBoundingClientRect();
-    const pointer = new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
-    raycaster.setFromCamera(pointer, camera);
+    const picked = pick((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height, 1.1);
+    if (picked) callbacks.select(picked);
+  }
+  // x and y are 0..1 across the canvas. A hand is less exact than a mouse, so it gets a wider reach.
+  function pick(x: number, y: number, reach: number): UniverseSelection {
+    if (!thoughts) return null;
+    raycaster.params.Points.threshold = reach * spread;
+    raycaster.setFromCamera(new THREE.Vector2(x * 2 - 1, -y * 2 + 1), camera);
     const hit = raycaster.intersectObject(thoughts)[0];
-    if (hit?.index !== undefined) {
-      const star = layout.stars[hit.index];
-      const cluster = layout.clusters[hit.index - layout.stars.length];
-      if (star) callbacks.select({kind: 'thought', id: star.id});
-      else if (cluster) callbacks.select({kind: 'planet', id: cluster.id});
-    }
+    if (hit?.index === undefined) return null;
+    const star = layout.stars[hit.index];
+    const cluster = layout.clusters[hit.index - layout.stars.length];
+    return star ? {kind: 'thought', id: star.id} : cluster ? {kind: 'planet', id: cluster.id} : null;
   }
   const startDrag = () => {dragging = true; flight = null;};
   const endDrag = () => {dragging = false;};
@@ -153,10 +166,10 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
   return {
     update(next: UniverseLayout3, fresh: Set<string>, selected: UniverseSelection, showLinks: boolean) {
       layout = next;
-      if (thoughts) {scene.remove(thoughts); disposeObject(thoughts);}
-      thoughts = createThoughts(layout, fresh, renderer.getPixelRatio());scene.add(thoughts);
-      if (connections) {scene.remove(connections); disposeObject(connections);}
-      connections = createConnections(layout, selected, showLinks);scene.add(connections);
+      if (thoughts) {content.remove(thoughts); disposeObject(thoughts);}
+      thoughts = createThoughts(layout, fresh, renderer.getPixelRatio());content.add(thoughts);
+      if (connections) {content.remove(connections); disposeObject(connections);}
+      connections = createConnections(layout, selected, showLinks);content.add(connections);
       if (selection?.id !== selected?.id || selection?.kind !== selected?.kind) focus(selected);
       invalidate();
     },
@@ -175,6 +188,9 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
     rotate(horizontal: number, vertical: number) {
       flight = null;controls.rotateLeft(horizontal);controls.rotateUp(vertical);invalidate();
     },
+    // 1 is the normal layout; below pulls every thought toward the center, above spreads them out.
+    spread(value: number) {spreadTarget = THREE.MathUtils.clamp(value, .08, 1.6);invalidate();},
+    pickAt(x: number, y: number) {return pick(x, y, 2.4);},
     dispose() {
       disposed = true;cancelAnimationFrame(frame);observer.disconnect();
       controls.removeEventListener('change', invalidate);controls.removeEventListener('start', startDrag);controls.removeEventListener('end', endDrag);

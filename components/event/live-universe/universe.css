@@ -132,3 +132,21 @@
 @media (prefers-reduced-motion: reduce) {
   .lv-immersive *, .lv-immersive *::before, .lv-immersive *::after { animation: none !important; transition: none !important; }
 }
+
+/* Text-free universe: only the controls and the join QR stay on screen. */
+.lv-immersive .uv-bottom { justify-content: center; }
+.uv-qr { position: absolute; right: 0; bottom: 0; display: block; padding: 4px; border-radius: 8px; background: white; pointer-events: auto; opacity: .92; transition: opacity .2s; }
+.uv-qr:hover { opacity: 1; }
+.uv-qr img { display: block; width: 96px; height: 96px; }
+
+/* Hand control: the tracked hand and its cursor are drawn over the universe; the camera image is never shown. */
+.uv-hand { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+.uv-hand-video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.uv-controls .uv-hand-toggle.loading svg { animation: uv-hand-wait 1.2s ease-in-out infinite; }
+.uv-controls .uv-hand-toggle.on { background: color-mix(in srgb, #8fb3ff 30%, transparent); color: var(--lv-ink); box-shadow: 0 0 14px #8fb3ff88; }
+.uv-controls .uv-hand-toggle.error { color: #ff8a6b; }
+@keyframes uv-hand-wait { 50% { opacity: .35; } }
+
+@media (max-width: 650px) {
+  .uv-qr { display: none; } /* already on the phone */
+}

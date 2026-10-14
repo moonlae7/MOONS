@@ -9,3 +9,6 @@ next-env.d.ts
 # local
 screenshots/tmp/
 .data/
+
+# copied from node_modules by scripts/copy-mediapipe.mjs
+public/mediapipe/wasm/

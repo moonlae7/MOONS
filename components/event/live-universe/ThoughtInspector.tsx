@@ -11,7 +11,7 @@ export default function ThoughtInspector({data, selection, showList, onClose, on
   const thought = selection?.kind === 'thought' ? data.thoughts.find(t => t.id === selection.id && t.status !== 'held') : null;
   const planet = selection?.kind === 'planet' ? data.space.planets.find(p => p.id === selection.id) : null;
   const listed = data.thoughts.filter(t => t.status !== 'held' && (!planet || t.planetIds.includes(planet.id)));
-  if (!showList && !thought && !planet) return null;
+  if (!showList && !thought) return null; // a constellation only moves the camera; its list opens from the list button
   const pending = thought?.status === 'saved' || thought?.status === 'analyzing';
   return <aside className="uv-inspector" aria-label={thought ? '선택한 생각' : '생각 목록'}>
     <header><h2>{thought ? '작은 생각 하나' : planet?.name ?? '이 우주의 생각'}{!thought && <span>{listed.length}</span>}</h2>
