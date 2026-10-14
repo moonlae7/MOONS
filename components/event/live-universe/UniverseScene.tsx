@@ -74,17 +74,20 @@ const UniverseScene = forwardRef<SceneHandle, Props>(function UniverseScene(prop
               event.key === 'ArrowUp' ? .08 : event.key === 'ArrowDown' ? -.08 : 0);
           }
         }}/>
-      {/* No text over the universe: constellations are named for screen readers only. */}
-      <nav className="sr-only" aria-label="별자리로 이동">
-        {layout.clusters.map(cluster => <button key={cluster.id} type="button"
-          aria-pressed={selection?.kind === 'planet' && selection.id === cluster.id}
-          onClick={() => onSelect({kind: 'planet', id: cluster.id})}>{cluster.name}, {cluster.count}개의 생각</button>)}
+      <nav className="uv-labels" aria-label="별자리로 이동">
+        {layout.clusters.map(cluster => <button key={cluster.id} type="button" hidden={status !== 'ready'}
+          ref={element => {if (element) labels.current.set(cluster.id, element);else labels.current.delete(cluster.id);}}
+          className="uv-cluster" aria-pressed={selection?.kind === 'planet' && selection.id === cluster.id}
+          aria-label={`${cluster.name}, ${cluster.count}개의 생각`}
+          onClick={() => onSelect({kind: 'planet', id: cluster.id})}>
+          <span>{cluster.name}</span><small>{cluster.count}개의 생각</small>
+        </button>)}
       </nav>
     </>}
-    {status === 'loading' && <p className="sr-only" role="status">우주를 펼치고 있어요</p>}
+    {status === 'loading' && <p className="uv-loading" role="status">우주를 펼치고 있어요</p>}
     {status === 'fallback' && <>
       <FlatUniverse data={data} fresh={fresh} cosmos onSelect={id => onSelect({kind: 'thought', id})}/>
-      <p className="sr-only" role="status">이 기기에서는 기본 우주 화면으로 보여드려요.</p>
+      <p className="uv-fallback" role="status">이 기기에서는 기본 우주 화면으로 보여드려요.</p>
     </>}
   </div>;
 });

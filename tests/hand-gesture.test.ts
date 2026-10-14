@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {GestureTracker, readHand, type Point} from '../lib/hand-gesture.ts';
 
 // A right hand facing the camera: wrist low, knuckles above. `curl` 0 is an open hand, 1 a fist.
-function hand({x = 0.5, y = 0.6, curl = 0, pinch = false}: {x?: number; y?: number; curl?: number; pinch?: boolean} = {}): Point[] {
+function hand({x = 0.5, y = 0.6, curl = 0, pinch = false, poke = false}: {x?: number; y?: number; curl?: number; pinch?: boolean; poke?: boolean} = {}): Point[] {
   const p: Point[] = Array.from({length: 21}, () => ({x, y}));
   p[0] = {x, y: y + 0.2};                    // wrist
   p[9] = {x, y};                             // middle knuckle: palm length 0.2
+  p[5] = {x: x - 0.04, y};                   // index knuckle
   const tip = (dx: number) => ({x: x + dx, y: y - 0.16 * (1 - curl) + 0.1 * curl});
   p[8] = tip(-0.04); p[12] = tip(0); p[16] = tip(0.04); p[20] = tip(0.08);
+  if (poke) p[8] = {x: x - 0.04, y: y - 0.07}; // index dips toward its knuckle
   p[4] = pinch ? {x: p[8].x + 0.01, y: p[8].y + 0.01} : {x: x - 0.14, y: y + 0.06};
   return p;
 }
@@ -57,4 +59,26 @@ test('losing the hand is reported once', () => {
   assert.equal(g.update(null, 100).events.length, 0);
   assert.deepEqual(g.update(null, 600).events, [{type: 'lost'}]);
   assert.equal(g.update(null, 900).events.length, 0);
+});
+
+function run(g: GestureTracker, frames: Point[][], start = 0, step = 40) {
+  return frames.flatMap((f, i) => g.update(f, start + i * step).events);
+}
+
+test('two quick index taps click where the finger pointed', () => {
+  const g = new GestureTracker();
+  const events = run(g, [hand(), hand(), hand(), hand({poke: true}), hand(), hand(), hand(), hand({poke: true}), hand(), hand()]);
+  const taps = events.filter(e => e.type === 'doubleTap');
+  assert.equal(taps.length, 1);
+  assert.equal(events.some(e => e.type === 'select'), false);
+});
+
+test('one tap, a slow tap pair, or a fist is not a double tap', () => {
+  assert.equal(run(new GestureTracker(), [hand(), hand(), hand({poke: true}), hand(), hand()]).some(e => e.type === 'doubleTap'), false);
+  const slow = new GestureTracker();
+  const first = run(slow, [hand(), hand(), hand({poke: true}), hand()]);
+  const later = run(slow, [hand(), hand({poke: true}), hand()], 2000);
+  assert.equal([...first, ...later].some(e => e.type === 'doubleTap'), false);
+  const fist = run(new GestureTracker(), [hand(), hand(), hand({curl: 1}), hand(), hand({curl: 1}), hand()]);
+  assert.equal(fist.some(e => e.type === 'doubleTap'), false);
 });
