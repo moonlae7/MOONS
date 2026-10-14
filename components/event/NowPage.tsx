@@ -5,21 +5,13 @@ import {useEffect, useRef, useState} from 'react';
 import {ArrowLeft, ArrowRight, ArrowUp, Check, LoaderCircle, Mic, Square} from 'lucide-react';
 import {LineLogo} from '@/components/Brand';
 import {api, participantId, postJson, SPACE_ID} from '@/lib/client';
+import {decodeTo16k, normalize, pieces, wav} from '@/lib/audio';
 import type {Question} from '@/lib/thought';
 
 type Sent = {id: string; text: string; input: 'text' | 'voice'; redacted: number};
 const FREE: Question = {id: '', kind: '떠오른 생각', text: '질문 없이, 지금 머릿속에 있는 것 아무거나.'};
-const MAX_SECONDS = 45; // about 300 Korean characters of speech
-const MAX_CHARS = 300;
-
-// The phone's own dictation (Siri on iPhone, Google on Android). Words appear in the box as they are spoken.
-type Dictation = {lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void;
-  onresult: ((e: {results: ArrayLike<ArrayLike<{transcript: string}>>}) => void) | null; onerror: ((e: {error: string}) => void) | null; onend: (() => void) | null};
-function dictationCtor(): (new () => Dictation) | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {SpeechRecognition?: new () => Dictation; webkitSpeechRecognition?: new () => Dictation};
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
+const MAX_SECONDS = 480; // about 3000 Korean characters of speech
+const MAX_CHARS = 3000;
 
 function pickMime() {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -42,24 +34,43 @@ export default function NowPage({questions}: {questions: Question[]}) {
   const [fromVoice, setFromVoice] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), tick = useRef<ReturnType<typeof setInterval> | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
-  const dictation = useRef<Dictation | null>(null), useServer = useRef(false);
+  const [step, setStep] = useState('');
   const card = cards[index];
 
-  useEffect(() => { try { setNickname(localStorage.getItem('moons.nickname') ?? ''); } catch {} return () => { if (tick.current) clearInterval(tick.current); recorder.current?.stream.getTracks().forEach(t => t.stop()); dictation.current?.abort(); }; }, []);
+  useEffect(() => { try { setNickname(localStorage.getItem('moons.nickname') ?? ''); } catch {} return () => { if (tick.current) clearInterval(tick.current); recorder.current?.stream.getTracks().forEach(t => t.stop()); }; }, []);
 
   // Voice goes into the answer box first, so people can check and fix it before sending.
+  // The recording is turned into clean, level 16kHz mono WAV and sent to OpenAI in 100-second pieces.
   async function transcribe(audio: Blob) {
-    setError(''); setBusy('voice');
+    setError(''); setBusy('voice'); setStep('');
     try {
-      const form = new FormData();
-      form.append('participantId', participantId());
-      form.append('audio', audio, audio.type.includes('mp4') ? 'voice.mp4' : audio.type.includes('ogg') ? 'voice.ogg' : 'voice.webm');
-      const res = await api<{text: string}>('/api/transcribe', {method: 'POST', body: form});
-      setText(prev => `${prev.trim() ? `${prev.trimEnd()} ` : ''}${res.text}`.slice(0, MAX_CHARS));
+      let files: Blob[];
+      try {
+        const decoded = await decodeTo16k(await audio.arrayBuffer());
+        const {samples, peak} = normalize(decoded.samples);
+        if (peak < 0.002) throw new Error('quiet');
+        files = pieces(samples, decoded.rate, 100).map(p => wav(p.samples, decoded.rate));
+      } catch (e) {
+        if ((e as Error).message === 'quiet') { setError('소리가 거의 들리지 않았어요. 마이크 가까이에서 다시 말해 주세요.'); return; }
+        files = [audio]; // the browser could not decode its own recording: send it as recorded
+      }
+      const texts: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        if (files.length > 1) setStep(`${i + 1}/${files.length}`);
+        const form = new FormData();
+        form.append('participantId', participantId());
+        const f = files[i];
+        form.append('audio', f, f.type === 'audio/wav' ? `voice-${i}.wav` : f.type.includes('mp4') ? 'voice.mp4' : f.type.includes('ogg') ? 'voice.ogg' : 'voice.webm');
+        const res = await api<{text: string}>('/api/transcribe', {method: 'POST', body: form}).catch(e => { if (files.length > 1 && (e as Error).message.includes('알아듣지')) return {text: ''}; throw e; });
+        if (res.text) texts.push(res.text);
+      }
+      const heard = texts.join(' ').trim();
+      if (!heard) { setError('목소리를 알아듣지 못했어요. 조금 더 크게, 천천히 말해 주세요.'); return; }
+      setText(prev => `${prev.trim() ? `${prev.trimEnd()} ` : ''}${heard}`.slice(0, MAX_CHARS));
       setFromVoice(true);
       setTimeout(() => box.current?.focus(), 50);
     } catch (e) { setError((e as Error).message); }
-    finally { setBusy(''); }
+    finally { setBusy(''); setStep(''); }
   }
 
   async function submit() {
@@ -74,59 +85,13 @@ export default function NowPage({questions}: {questions: Question[]}) {
     finally { setBusy(''); }
   }
 
-  function startTimer(stop: () => void) {
-    setSeconds(0);
-    const startedAt = Date.now();
-    if (tick.current) clearInterval(tick.current);
-    tick.current = setInterval(() => {
-      const s = Math.floor((Date.now() - startedAt) / 1000);
-      setSeconds(s);
-      if (s >= MAX_SECONDS) stop();
-    }, 500);
-  }
-
-  function startDictation(Ctor: new () => Dictation) {
-    const base = text.trim() ? `${text.trimEnd()} ` : '';
-    let heard = '', failed = '';
-    const rec = new Ctor();
-    rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = true;
-    rec.onresult = e => {
-      heard = Array.from(e.results, r => r[0].transcript.trim()).filter(Boolean).join(' ');
-      setText(`${base}${heard}`.slice(0, MAX_CHARS));
-    };
-    rec.onerror = e => { failed = e.error; };
-    rec.onend = () => {
-      dictation.current = null;
-      if (tick.current) clearInterval(tick.current);
-      setRecording(false);
-      if (heard.trim()) { setFromVoice(true); setTimeout(() => box.current?.focus(), 50); return; }
-      if (failed === 'not-allowed') { setError('마이크 권한을 허용해 주세요. 주소창의 설정에서 마이크를 켤 수 있어요.'); return; }
-      if (failed === 'service-not-allowed' || failed === 'network' || failed === 'language-not-supported') {
-        useServer.current = true; // this phone cannot dictate here; record and transcribe on the server instead
-        setError('이 휴대폰에서는 바로 받아쓰기가 안 돼요. "말로 답하기"를 한 번 더 누르면 녹음 방식으로 받아써요.');
-        return;
-      }
-      setError('목소리를 듣지 못했어요. 마이크 가까이에서 다시 말해 주세요.');
-    };
-    dictation.current = rec;
-    try { rec.start(); } catch { dictation.current = null; useServer.current = true; setError('받아쓰기를 시작하지 못했어요. 한 번 더 누르면 녹음 방식으로 받아써요.'); return; }
-    setRecording(true);
-    startTimer(() => rec.stop());
-  }
-
   async function toggleRecord() {
-    if (recording) {
-      if (dictation.current) dictation.current.stop();
-      else if (recorder.current?.state === 'recording') recorder.current.stop();
-      return;
-    }
+    if (recording) { if (recorder.current?.state === 'recording') recorder.current.stop(); return; }
     setError('');
-    const Ctor = useServer.current ? null : dictationCtor();
-    if (Ctor) { startDictation(Ctor); return; }
     const mime = pickMime();
     if (!navigator.mediaDevices?.getUserMedia || !mime) { setError('이 브라우저에서는 녹음을 쓸 수 없어요. 글로 적어주세요.'); return; }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+      const stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
       const r = new MediaRecorder(stream, {mimeType: mime});
       chunks.current = [];
       r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data); };
@@ -137,8 +102,13 @@ export default function NowPage({questions}: {questions: Question[]}) {
         const blob = new Blob(chunks.current, {type: mime.split(';')[0]});
         if (blob.size > 2000) transcribe(blob); else setError('너무 짧아요. 조금 더 길게 말해주세요.');
       };
-      recorder.current = r; r.start(); setRecording(true);
-      startTimer(() => { if (r.state === 'recording') r.stop(); });
+      recorder.current = r; r.start(1000); setRecording(true); setSeconds(0);
+      const startedAt = Date.now();
+      tick.current = setInterval(() => {
+        const s = Math.floor((Date.now() - startedAt) / 1000);
+        setSeconds(s);
+        if (s >= MAX_SECONDS && r.state === 'recording') r.stop();
+      }, 500);
     } catch { setError('마이크를 쓸 수 없어요. 브라우저 권한을 확인하거나 글로 적어주세요.'); }
   }
 
@@ -164,7 +134,7 @@ export default function NowPage({questions}: {questions: Question[]}) {
         <span className="now-count" aria-live="polite">{text.length} / {MAX_CHARS}</span>
         <div className="now-buttons">
           <button type="button" className={`now-mic ${recording ? 'on' : ''}`} onClick={toggleRecord} disabled={!!busy} aria-pressed={recording}>
-            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>받아쓰는 중…</> : <><Mic size={17}/>말로 답하기</>}
+            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>받아쓰는 중{step ? ` ${step}` : '…'}</> : <><Mic size={17}/>말로 답하기</>}
           </button>
           <button type="submit" className="now-send" disabled={!text.trim() || !!busy || recording} aria-label="스캔하기">{busy === 'text' ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
         </div>

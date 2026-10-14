@@ -76,6 +76,41 @@ create table if not exists crossroads (
   model text not null,
   created_at timestamptz not null default now()
 );
+create table if not exists materials (
+  id text primary key,
+  space_id text not null,
+  entry_id text,
+  title text not null,
+  filename text not null default '',
+  mime text not null default '',
+  bytes bigint not null default 0,
+  duration real not null default 0,
+  status text not null default 'uploading',
+  sentence_times jsonb not null default '[]',
+  created_at timestamptz not null default now()
+);
+create table if not exists material_parts (
+  material_id text not null,
+  seq int not null,
+  data bytea not null,
+  primary key (material_id, seq)
+);
+create table if not exists material_chunks (
+  material_id text not null,
+  seq int not null,
+  start_sec real not null,
+  end_sec real not null,
+  text text not null,
+  primary key (material_id, seq)
+);
+create table if not exists comparisons (
+  entry_id text primary key,
+  material_entry_id text not null,
+  summary text not null default '',
+  items jsonb not null default '[]',
+  model text not null default '',
+  created_at timestamptz not null default now()
+);
 `;
 
 const g = globalThis as unknown as {__moonsDb?: Promise<Driver>};

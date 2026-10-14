@@ -12,7 +12,10 @@ export type JsonTask = {
 export interface MoonsAI {
   name: string;
   json<T>(task: JsonTask): Promise<{data: T; model: string}>;
-  transcribe(audio: Blob, filename: string): Promise<string>;
+  // Free-text reply for conversations (personal MOONS chat).
+  text(task: {system: string; messages: {role: 'user' | 'assistant'; content: string}[]; tier: 'fast' | 'deep'}): Promise<{text: string; model: string}>;
+  // language null = detect; hint = context words for the speech model.
+  transcribe(audio: Blob, filename: string, opts?: {language?: string | null; hint?: string}): Promise<string>;
   moderate(text: string): Promise<boolean>; // true = should be held back
 }
 

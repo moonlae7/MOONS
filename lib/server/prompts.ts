@@ -136,3 +136,45 @@ export const crossroadsSchema = {
 
 export const validChecklistBasis = (basis: string) =>
   basis === 'logic' || basis === 'hesitation' || basis === 'gap' || (basis.startsWith('checklist:') && (checklistIds as readonly string[]).includes(basis.slice(10)));
+
+// ---------- original vs answer ----------
+// The original is what was actually said (a transcribed recording). An answer is one person's own thought about it.
+// This is not grading: it shows what the person took from the original, what they hold differently, and what is their own.
+export const compareSystem = `너는 MOONS의 원본 대조기다. 원본은 녹음에서 받아쓴 문장들이고, 답은 한 사람이 그 자리에서 듣고 기억하고 생각한 것이다.
+목적은 채점이 아니라, 이 사람이 원본에서 무엇을 붙잡았고 무엇을 다르게 기억하는지, 무엇이 자기 생각인지 보여주는 것이다.
+규칙
+1. 답의 문장마다 하나로 판정한다.
+   - same: 원본에 그 내용이 있고 같은 뜻으로 기억함.
+   - different: 원본에 관련된 말이 있지만 내용이나 뜻을 다르게 기억함 (누가 말했는지, 숫자, 결론, 뉘앙스가 달라진 경우 포함).
+   - own: 원본에 없는 그 사람 자신의 생각, 느낌, 의견, 경험. own은 틀린 것이 아니다.
+2. same과 different에는 근거가 된 원본 문장 번호를 original에 1~3개 단다. own은 빈 배열.
+3. note는 60자 이내 한국어. different면 "원본에서는 ~라고 했어요"처럼 실제로 한 말을 짧게 알려준다. same이면 빈 문자열이어도 된다. own이면 빈 문자열.
+4. 원본에 없는 내용을 지어내지 않는다. 원본 문장 번호는 주어진 번호만 쓴다. 확신이 없으면 own으로 둔다.
+5. summary는 한 문장. "~를 붙잡으셨고, ~는 다르게 기억하신 것 같아요"처럼 이 사람에게 말하듯 쓴다.
+6. 한국어로 쓴다.`;
+
+export function compareUser(original: string[], answer: string[], question?: string) {
+  return `${question ? `질문: ${question}\n\n` : ''}원본 문장 (번호: 문장)
+${original.map((s, i) => `${i}: ${s}`).join('\n')}
+
+답 문장 (번호: 문장)
+${answer.map((s, i) => `${i}: ${s}`).join('\n')}`;
+}
+
+export const compareSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['summary', 'items'],
+  properties: {
+    summary: {type: 'string'},
+    items: {type: 'array', items: {
+      type: 'object', additionalProperties: false,
+      required: ['answer', 'verdict', 'original', 'note'],
+      properties: {
+        answer: {type: 'integer'},
+        verdict: {type: 'string', enum: ['same', 'different', 'own']},
+        original: {type: 'array', items: {type: 'integer'}},
+        note: {type: 'string'},
+      },
+    }},
+  },
+};

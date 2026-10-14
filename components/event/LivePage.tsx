@@ -81,7 +81,7 @@ function layout(data: UniverseDTO) {
     if (ps.length === 1) { cx = ps[0].cx; cy = ps[0].cy; dist = ps[0].r + 18 + 12 * Math.sqrt(i); }
     else if (ps.length === 2) { cx = (ps[0].cx + ps[1].cx) / 2; cy = (ps[0].cy + ps[1].cy) / 2; dist = 6 + 12 * Math.sqrt(i); }
     else { cx = W * 0.07; cy = H * 0.5; dist = 8 + 11 * Math.sqrt(i); }
-    const color = t.kind === 'decision' ? '#6D3FC0' : ps[0]?.color ?? '#9AA3B5';
+    const color = t.kind === 'decision' ? '#6D3FC0' : t.kind === 'media' ? '#FFE3A3' : ps[0]?.color ?? '#9AA3B5';
     return {...t, pending, color, x: Math.max(20, Math.min(W - 20, cx + Math.cos(angle) * dist)), y: Math.max(130, Math.min(H - 30, cy + Math.sin(angle) * dist))};
   });
   return {planets, placed};
@@ -94,6 +94,13 @@ function Star({t, degree, fresh}: {t: Placed; degree: number; fresh: boolean}) {
     <circle r={2.4} fill="#FFFFFF" className="lv-arriving"/>
   </g>;
   const decision = t.kind === 'decision';
+  if (t.kind === 'media') return <g className="lv-star lv-original-star">
+    <circle r={30} fill={`url(#${gid('#FFFFFF')})`} fillOpacity={0.9} className="lv-halo"/>
+    <rect x={-70} y={-0.8} width={140} height={1.6} fill="url(#lv-spike-h)"/>
+    <rect x={-0.8} y={-70} width={1.6} height={140} fill="url(#lv-spike-v)"/>
+    <circle r={5.5} fill="#FFF8E1" className="lv-core"/>
+    <text y={-22} textAnchor="middle" className="lv-orig">원본</text>
+  </g>;
   const color = decision ? '#B48CFF' : t.color;
   const s = 2.3 + Math.min(3.2, degree * 0.75) + (decision ? 1 : 0);
   const spike = decision ? s * 8 : degree >= 2 ? s * 5.5 : 0;

@@ -305,3 +305,41 @@
 @keyframes th-scan{to{top:100%}}
 @media (prefers-reduced-motion:reduce){.th-wait.scan .th-scanner::after{animation:none;display:none}}
 .now-count{align-self:flex-end;font-size:12px;color:var(--ev-muted);font-variant-numeric:tabular-nums;margin-top:-6px}
+
+/* Original recording: upload (personal media page), player and transcript, answer-vs-original */
+.rec-upload{border:1.5px dashed rgba(30,31,28,.28);border-radius:18px;padding:16px 18px;margin:0 0 18px;display:flex;flex-direction:column;gap:10px;background:rgba(255,255,255,.55)}
+.rec-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rec-head span{font-size:12px;color:#6E7068}
+.rec-help{font-size:13px;color:#6E7068;line-height:1.55;margin:0}
+.rec-file{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;min-height:44px;padding:0 16px;border-radius:999px;border:1.5px solid #1E1F1C;background:#fff;font-size:14px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-file input{position:absolute;opacity:0;width:1px;height:1px}
+.rec-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.rec-fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#6E7068}
+.rec-fields input{min-height:40px;border:1px solid #C9C8BC;border-radius:10px;padding:0 10px;font:inherit;font-size:15px;background:#fff;color:#1E1F1C}
+.rec-go{display:inline-flex;align-items:center;justify-content:center;gap:8px;align-self:flex-start;min-height:44px;padding:0 20px;border-radius:999px;border:0;background:#1E1F1C;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
+.rec-go:disabled{opacity:.55;cursor:default}
+.rec-bar{height:6px;border-radius:99px;background:rgba(30,31,28,.1);overflow:hidden}
+.rec-bar i{display:block;height:100%;background:#3B66BE;transition:width .3s}
+.rec-done{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:#1F7A5A;margin:0}
+.rec-done a{display:inline-flex;align-items:center;gap:3px;color:#3B66BE;text-decoration:none}
+.rec-error{font-size:13px;color:#C2410C;margin:0}
+.th-audio{width:100%;margin:4px 0 10px}
+.th-transcript{list-style:none;margin:0;padding:0;max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.th-transcript button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;border:0;background:none;padding:6px 8px;border-radius:8px;font:inherit;font-size:15px;line-height:1.55;color:var(--ev-ink);cursor:pointer}
+.th-transcript button:hover{background:var(--ev-paper)}
+.th-transcript span{flex:none;font-size:12px;color:var(--ev-muted);font-variant-numeric:tabular-nums;min-width:38px}
+.th-transcript li.hl button{background:var(--ev-moon-wash);box-shadow:inset 3px 0 0 var(--ev-moon)}
+.th-compare{border:1.5px solid var(--ev-line);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.th-compare h2{display:flex;align-items:center;gap:6px;font-size:16px}
+.th-compare ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.cmp{border-radius:14px;padding:12px 14px;background:var(--ev-paper);display:flex;flex-direction:column;gap:6px;border-left:3px solid var(--ev-line-strong)}
+.cmp.same{border-left-color:var(--ev-ok)} .cmp.different{border-left-color:var(--ev-warn);background:var(--ev-warn-wash)} .cmp.own{border-left-color:var(--ev-moon)}
+.cmp-tag{font-size:12px;font-weight:700;color:var(--ev-muted)}
+.cmp-tag.same{color:var(--ev-ok)} .cmp-tag.different{color:var(--ev-warn)} .cmp-tag.own{color:var(--ev-moon-deep)}
+.cmp-mine{font-size:15px;line-height:1.55;margin:0}
+.cmp-note{font-size:13px;color:var(--ev-muted);margin:0}
+.cmp-quote{display:inline-flex;align-items:baseline;gap:6px;font-size:13px;color:var(--ev-moon-deep);text-decoration:none;line-height:1.5}
+.cmp-quote:hover{text-decoration:underline}
+.lv-orig{font-size:15px;font-weight:700;fill:#FFE3A3;letter-spacing:.5px}
+.ev-live.cosmos .lv-orig{paint-order:stroke;stroke:#03040A;stroke-width:4px}
+.ev-live:not(.cosmos) .lv-original-star .lv-halo{fill:#F2B27E}

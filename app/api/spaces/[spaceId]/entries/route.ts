@@ -28,7 +28,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/spaces/[spa
     if (limited(`p:${participantId}`, 6) || limited(`ip:${clientIp(request)}`, 40)) return fail(429, 'RATE_LIMITED', '조금만 천천히 넣어주세요. 1분 뒤에 다시 시도해 주세요.');
     let input: 'text' | 'voice' = spoken ? 'voice' : 'text';
     if (audio) {
-      if (audio.size > MAX_AUDIO) return fail(413, 'TOO_LARGE', '녹음이 너무 길어요. 45초 안으로 말해주세요.');
+      if (audio.size > MAX_AUDIO) return fail(413, 'TOO_LARGE', '녹음이 너무 길어요. 8분 안으로 말해주세요.');
       text = await ai().transcribe(audio, audio.name || 'voice.webm');
       input = 'voice';
     }

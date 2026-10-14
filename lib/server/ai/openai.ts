@@ -1,6 +1,6 @@
 import {AIError, type Embedder, type JsonTask, type MoonsAI} from './provider.ts';
 
-const BASE = 'https://api.openai.com/v1';
+const BASE = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'; // override only for local tests
 const HANGUL = /[\uAC00-\uD7A3]/;
 // Context for the speech model: Korean answers about the hackathon, English terms mixed in.
 const SPEECH_HINT = '해커톤 파이어사이드 챗에 대한 한국어 소감입니다. AI, API, OpenAI 같은 영어 단어가 섞일 수 있어요.';
@@ -40,27 +40,41 @@ export const openai: MoonsAI = {
         messages: [{role: 'system', content: task.system}, {role: 'user', content: task.user}],
         response_format: {type: 'json_schema', json_schema: {name: task.name, strict: true, schema: task.schema}},
       }),
-    }, task.tier === 'deep' ? 90000 : 60000);
+    }, (task.tier === 'deep' ? 90000 : 60000) + Math.min(120000, task.user.length * 4)); // long originals need longer
     const body = await res.json() as {choices?: {message?: {content?: string; refusal?: string}}[]};
     const content = body.choices?.[0]?.message?.content;
     if (!content) throw new AIError(`Empty response (${body.choices?.[0]?.message?.refusal ?? 'no content'})`, 'PARSE_FAILED');
     try { return {data: JSON.parse(content) as T, model}; }
     catch { throw new AIError('Model returned invalid JSON', 'PARSE_FAILED'); }
   },
-  async transcribe(audio, filename) {
+  async text(task) {
+    const model = task.tier === 'deep' ? (process.env.OPENAI_MODEL_DEEP || 'gpt-5.4') : (process.env.OPENAI_MODEL || 'gpt-5.4-mini');
+    const res = await call('/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model, reasoning_effort: 'low', messages: [{role: 'system', content: task.system}, ...task.messages]}),
+    }, 90000);
+    const body = await res.json() as {choices?: {message?: {content?: string; refusal?: string}}[]};
+    const content = body.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new AIError(`Empty response (${body.choices?.[0]?.message?.refusal ?? 'no content'})`, 'PARSE_FAILED');
+    return {text: content, model};
+  },
+  async transcribe(audio, filename, opts = {}) {
+    const language = opts.language === undefined ? 'ko' : opts.language;
     const once = async (model: string) => {
       const form = new FormData();
       form.append('file', audio, filename);
       form.append('model', model);
-      form.append('language', 'ko');
-      form.append('prompt', SPEECH_HINT);
+      if (language) form.append('language', language);
+      form.append('prompt', opts.hint ?? SPEECH_HINT);
+      form.append('temperature', '0');
       const res = await call('/audio/transcriptions', {method: 'POST', body: form}, 60000);
       const text = ((await res.json() as {text?: string}).text ?? '').trim();
       return PHANTOM.test(text) && text.length < 40 ? '' : text;
     };
     const primary = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
     const text = await once(primary);
-    if (HANGUL.test(text) || primary === 'whisper-1') return text;
+    if (!language || HANGUL.test(text) || primary === 'whisper-1') return text;
     // Korean speech sometimes comes back as a short English line. Ask Whisper once more and keep Korean if it hears it.
     try { const again = await once('whisper-1'); if (HANGUL.test(again)) return again; } catch {}
     return text;

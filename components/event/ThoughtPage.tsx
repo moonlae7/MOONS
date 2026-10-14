@@ -1,11 +1,13 @@
 'use client';
 import Link from 'next/link';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {ArrowLeft, ArrowUpRight, Check, GitFork, LoaderCircle, LockKeyhole, Mic, Orbit} from 'lucide-react';
+import {ArrowLeft, ArrowUpRight, AudioLines, Check, GitFork, LoaderCircle, LockKeyhole, Mic, Orbit, Play} from 'lucide-react';
 import {LineLogo, MoonCharacter} from '@/components/Brand';
 import ShapeView, {roleName} from './ShapeView';
 import {api, participantId, postJson, timeLabel, ApiError} from '@/lib/client';
-import {linkLabels, shapeLabels, signalLabels, type Crossroad, type ThoughtDTO} from '@/lib/thought';
+import {linkLabels, shapeLabels, signalLabels, verdictLabels, type Crossroad, type ThoughtDTO} from '@/lib/thought';
+
+const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 export default function ThoughtPage({id}: {id: string}) {
   const [t, setT] = useState<ThoughtDTO | null>(null);
@@ -17,6 +19,7 @@ export default function ThoughtPage({id}: {id: string}) {
   const [reason, setReason] = useState('');
   const [choosing, setChoosing] = useState(false);
   const [scan, setScan] = useState<{on: boolean; redacted: number}>({on: false, redacted: 0});
+  const player = useRef<HTMLAudioElement | null>(null), comparing = useRef(false), seekedAt = useRef(false);
   useEffect(() => { const p = new URLSearchParams(window.location.search); setScan({on: p.get('scan') === '1', redacted: Number(p.get('r')) || 0}); }, []);
 
   const load = useCallback(async () => {
@@ -45,6 +48,29 @@ export default function ThoughtPage({id}: {id: string}) {
     t?.related.forEach(r => { map[r.selfNode] = (map[r.selfNode] ?? 0) + 1; });
     return map;
   }, [t]);
+
+  // An answer sent before the original was uploaded gets read against it the first time it is opened.
+  useEffect(() => {
+    if (!t || comparing.current || t.comparison || !t.originalAvailable || t.status !== 'done' || t.kind === 'decision' || t.kind === 'media') return;
+    comparing.current = true;
+    api(`/api/entries/${id}/compare`, {method: 'POST'}).then(load).catch(() => {});
+  }, [t, id, load]);
+  // /t/:id?at=123 opens the original at that moment of the recording.
+  useEffect(() => {
+    if (!t?.material || seekedAt.current || !player.current) return;
+    const at = Number(new URLSearchParams(window.location.search).get('at'));
+    seekedAt.current = true;
+    if (Number.isFinite(at) && at > 0) player.current.currentTime = at;
+  }, [t]);
+  function seek(sec: number | undefined, play = true) {
+    if (!player.current || sec === undefined) return;
+    player.current.currentTime = sec;
+    if (play) player.current.play().catch(() => {});
+  }
+  useEffect(() => {
+    const n = t?.analysis?.nodes.find(x => x.id === selected);
+    if (t?.material && n?.source.length) seek(t.material.sentenceTimes[n.source[0]], false);
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const node = t?.analysis?.nodes.find(n => n.id === selected) ?? null;
   const highlight = new Set(node?.source ?? []);
@@ -79,15 +105,17 @@ export default function ThoughtPage({id}: {id: string}) {
     </header>
     {!t ? <div className="ev-center">{error ? <p className="ev-error">{error}</p> : <LoaderCircle className="spin"/>}</div> : <main className="th-main">
       <section className="th-head">
-        <span className="ev-eyebrow">{t.kind === 'decision' ? '결정' : t.status === 'done' ? '뇌 스캔 완료' : t.kind === 'quiz' ? '개발 퀴즈 답' : '생각'} · {timeLabel(t.createdAt)}{t.input === 'voice' && <> · <Mic size={12}/> 말로 넣음</>}</span>
+        <span className="ev-eyebrow">{t.kind === 'decision' ? '결정' : t.kind === 'media' ? '원본 · 녹음' : t.status === 'done' ? '뇌 스캔 완료' : t.kind === 'quiz' ? '개발 퀴즈 답' : '생각'} · {timeLabel(t.createdAt)}{t.input === 'voice' && t.kind !== 'media' && <> · <Mic size={12}/> 말로 넣음</>}</span>
         {question && <p className="th-question">Q. {question.text}</p>}
+        {t.material && <p className="th-question">{t.material.title} · {clock(t.material.duration)}</p>}
         {t.status === 'done' && t.analysis ? <>
-          <h1>이렇게 이해하신 것 같아요</h1>
+          <h1>{t.kind === 'media' ? '원본은 이런 모양이에요' : '이렇게 이해하신 것 같아요'}</h1>
           <p className="th-reason"><span className="th-shape">{shapeLabels[t.analysis.structure]}</span>{t.analysis.structureReason}</p>
           <div className="th-counts">
             <span className="chip warn">{signalLabels.misunderstanding} {counts.misunderstanding}</span>
             <span className="chip study">{signalLabels.study} {counts.study}</span>
             <span className="chip moon">다른 순간의 나 {t.related.length}</span>
+            {t.comparison && <span className="chip warn">원본과 다름 {t.comparison.items.filter(i => i.verdict === 'different').length}</span>}
           </div>
           {scan.redacted > 0 && <p className="ev-note">키나 연락처로 보이는 {scan.redacted}곳은 가려서 저장했어요.</p>}
         </> : t.status === 'failed' ? <><h1>{scan.on ? '스캔하지 못했어요' : '모양을 그리지 못했어요'}</h1><p className="th-reason">AI 응답이 늦거나 끊겼어요. 원문은 그대로 보관돼 있고, 운영진이 다시 돌릴 수 있어요.</p></>
@@ -100,10 +128,29 @@ export default function ThoughtPage({id}: {id: string}) {
         {t.analysis.fallback && <p className="ev-note">구조화가 두 번 실패해서 문장을 그대로 놓았어요.</p>}
       </section>}
 
+      {t.comparison ? <section className="th-compare" aria-label="원본과 비교">
+        <h2><AudioLines size={16}/>원본과 비교 · {t.comparison.materialTitle}</h2>
+        <p className="th-reason">{t.comparison.summary}</p>
+        <ul>{t.comparison.items.map(it => <li key={it.answer} className={`cmp ${it.verdict}`}>
+          <span className={`cmp-tag ${it.verdict}`}>{verdictLabels[it.verdict]}</span>
+          <p className="cmp-mine">“{t.sentences[it.answer]}”</p>
+          {it.note && <p className="cmp-note">{it.note}</p>}
+          {it.original.map(o => { const qt = t.comparison!.quotes.find(x => x.index === o); return qt && <Link key={o} className="cmp-quote" href={`/t/${t.comparison!.materialEntryId}?at=${qt.time}`}><Play size={12}/>{clock(qt.time)} “{qt.text}”</Link>; })}
+        </li>)}</ul>
+      </section> : t.originalAvailable && t.status === 'done' && t.kind !== 'decision' && <section className="th-compare"><p className="ev-note"><LoaderCircle size={14} className="spin"/> 원본 녹음과 비교하는 중이에요…</p></section>}
+
       <div className="th-grid">
-        <section className="th-original" aria-label="원문">
-          <h2><LockKeyhole size={15}/>원문 · 그때의 나</h2>
-          <p>{t.sentences.map((s, i) => <span key={i} className={highlight.has(i) ? 'hl' : ''}>{s} </span>)}</p>
+        <section className="th-original" aria-label={t.material ? '원본 녹음' : '원문'}>
+          {t.material ? <>
+            <h2><LockKeyhole size={15}/>원본 · 녹음 그대로</h2>
+            <audio ref={player} className="th-audio" controls preload="metadata" src={`/api/materials/${t.material.id}/file`}/>
+            <ol className="th-transcript">{t.sentences.map((s, i) => <li key={i} className={highlight.has(i) ? 'hl' : ''}>
+              <button type="button" onClick={() => seek(t.material!.sentenceTimes[i])}><span>{clock(t.material!.sentenceTimes[i] ?? 0)}</span>{s}</button>
+            </li>)}</ol>
+          </> : <>
+            <h2><LockKeyhole size={15}/>원문 · 그때의 나</h2>
+            <p>{t.sentences.map((s, i) => <span key={i} className={highlight.has(i) ? 'hl' : ''}>{s} </span>)}</p>
+          </>}
           {node && <div className="th-node-detail">
             <span className="ev-eyebrow">{roleName(node.role)}{node.empty ? ' · 쓰지 않은 자리' : ''}</span>
             {t.analysis?.signals.filter(s => s.node === node.id).map(s => <div key={s.id} className={`th-signal ${s.kind} ${s.state}`}>

@@ -117,6 +117,16 @@ export type Crossroad = {
   createdAt: string;
 };
 
+// The original: a recording kept as uploaded, with a time for every transcribed sentence.
+export const MATERIAL_PART_BYTES = 4 * 1024 * 1024; // one upload request, under the 4.5MB function limit
+export const MATERIAL_MAX_BYTES = 150 * 1024 * 1024;
+export const MATERIAL_CHUNK_SECONDS = 120; // 16kHz mono WAV, about 3.8MB per chunk
+export type MaterialInfo = {id: string; title: string; mime: string; duration: number; sentenceTimes: number[]};
+export type CompareVerdict = 'same' | 'different' | 'own';
+export const verdictLabels: Record<CompareVerdict, string> = {same: '원본과 같아요', different: '원본과 달라요', own: '내 생각'};
+export type CompareItem = {answer: number; verdict: CompareVerdict; original: number[]; note: string};
+export type Comparison = {materialEntryId: string; materialTitle: string; summary: string; items: CompareItem[]; quotes: {index: number; text: string; time: number}[]};
+
 export type ThoughtDTO = {
   id: string;
   kind: EntryKind;
@@ -130,6 +140,9 @@ export type ThoughtDTO = {
   related: RelatedNode[];
   crossroad: Crossroad | null;
   space: SpaceInfo;
+  material: MaterialInfo | null;      // set when this entry is an uploaded original
+  comparison: Comparison | null;      // this answer read against the original
+  originalAvailable: boolean;         // an original exists in this space to compare with
 };
 
 export function splitSentences(body: string): string[] {

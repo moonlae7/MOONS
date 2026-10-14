@@ -3,6 +3,7 @@ import {ai, embedder, AIError} from './ai/index.ts';
 import {eventSpace} from './event.ts';
 import {PROMPT_VERSION, structureSystem, structureUser, structureSchema, relateSystem, relateSchema, crossroadsSystem, crossroadsSchema} from './prompts.ts';
 import {verifyStructure, fragmentsFallback, cosine, type RawStructure} from './verify.ts';
+import {compareAll, compareEntry, comparisonFor, materialForEntry, materialTitles, originalAvailable, setMaterialStatus} from './material.ts';
 import {preview, splitSentences, linkKinds, type Crossroad, type CrossroadPath, type EntryKind, type EntryStatus, type LinkKind, type RelatedNode, type SpaceInfo, type ThoughtAnalysis, type ThoughtDTO, type UniverseDTO} from '../thought.ts';
 
 type EntryRow = {id: string; space_id: string; participant_id: string; nickname: string | null; kind: EntryKind; question_id: string | null; body: string; sentences: string[]; input: 'text' | 'voice'; hidden: boolean; status: EntryStatus; error: string | null; parent_entry: string | null; created_at: unknown};
@@ -67,7 +68,8 @@ export async function processEntry(id: string) {
       log('structure retry', id, verified.issues.length, 'issues');
     }
     const value = verified?.ok ? verified.value : fragmentsFallback(row.sentences, lastPlanets.filter(p => space.planets.some(pl => pl.id === p)));
-    const anchor = questionPlanet(space, row.question_id);
+    // An answer sits on its question's planet; an uploaded original sits on the central (first) planet.
+    const anchor = row.kind === 'media' ? (space.planets[0]?.id ?? null) : questionPlanet(space, row.question_id);
     if (anchor) value.planetIds = [...new Set([anchor, ...value.planetIds])].slice(0, 2);
     await q(`insert into analyses (id, entry_id, structure, structure_reason, nodes, edges, signals, planet_ids, model, prompt_version, fallback)
       values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10,$11)`,
@@ -75,9 +77,13 @@ export async function processEntry(id: string) {
     await setStatus(id, 'done');
     log('structured', id, value.structure, `${Date.now() - started}ms`);
     await linkEntry(id).catch(error => log('link failed', id, (error as Error).message));
+    // Answers are read against the original; a new original is read against every answer so far.
+    if (row.kind === 'media') { await setMaterialStatus(id, 'done').catch(() => {}); await compareAll(row.space_id).catch(error => log('compare all failed', (error as Error).message)); }
+    else if (row.kind === 'spark' || row.kind === 'quiz') await compareEntry(id).catch(error => log('compare failed', id, (error as Error).message));
   } catch (error) {
     const code = error instanceof AIError ? error.code : 'ANALYSIS_FAILED';
     await setStatus(id, 'failed', code).catch(() => {});
+    await setMaterialStatus(id, 'failed').catch(() => {});
     log('failed', id, code, (error as Error).message);
   } finally { g.__moonsBusy.delete(id); }
 }
@@ -153,9 +159,14 @@ export async function universe(space: SpaceInfo): Promise<UniverseDTO> {
     const key = [l.from_entry, l.to_entry].sort().join('|');
     if (!pairs.has(key) || l.kind === 'contradicts') pairs.set(key, {a: l.from_entry, b: l.to_entry, kind: l.kind});
   }
+  const titles = await materialTitles(space.id);
+  // Remembered differently from the original counts as a place you might not know yet.
+  const differs = new Map((await q<{entry_id: string; items: {verdict: string}[]}>(
+    'select c.entry_id, c.items from comparisons c join entries e on e.id = c.entry_id where e.space_id = $1', [space.id]))
+    .map(c => [c.entry_id, c.items.filter(i => i.verdict === 'different').length]));
   const thoughts = rows.map(r => ({
-    id: r.id, kind: r.kind, status: r.status, preview: preview(r.body), planetIds: r.planet_ids?.length ? r.planet_ids : [questionPlanet(space, r.question_id)].filter((x): x is string => !!x),
-    openSignals: (r.signals ?? []).filter(s => s.state === 'open').length, structure: (r.structure as ThoughtAnalysis['structure']) ?? null, createdAt: iso(r.created_at),
+    id: r.id, kind: r.kind, status: r.status, preview: r.kind === 'media' ? (titles.get(r.id) ?? preview(r.body)) : preview(r.body), planetIds: r.planet_ids?.length ? r.planet_ids : [questionPlanet(space, r.question_id)].filter((x): x is string => !!x),
+    openSignals: (r.signals ?? []).filter(s => s.state === 'open').length + (differs.get(r.id) ?? 0), structure: (r.structure as ThoughtAnalysis['structure']) ?? null, createdAt: iso(r.created_at),
   }));
   return {space, thoughts, links: [...pairs.values()], stats: {thoughts: thoughts.length, links: pairs.size, openSignals: thoughts.reduce((s, t) => s + t.openSignals, 0)}, now: new Date().toISOString()};
 }
@@ -188,7 +199,9 @@ export async function thought(id: string): Promise<ThoughtDTO | null> {
   const c = (await q<{id: string; situation: string; paths: CrossroadPath[]; chosen_path: string | null; chosen_reason: string | null; decision_entry: string | null; created_at: unknown}>(
     'select * from crossroads where entry_id = $1 order by created_at desc limit 1', [id]))[0];
   const crossroad: Crossroad | null = c ? {id: c.id, situation: c.situation, paths: c.paths, chosenPath: c.chosen_path, chosenReason: c.chosen_reason, decisionEntry: c.decision_entry, createdAt: iso(c.created_at)} : null;
-  return {id: row.id, kind: row.kind, status: row.status, input: row.input, body: row.body, sentences: row.sentences, questionId: row.question_id, createdAt: iso(row.created_at), analysis, related, crossroad, space};
+  const isOriginal = row.kind === 'media';
+  return {id: row.id, kind: row.kind, status: row.status, input: row.input, body: row.body, sentences: row.sentences, questionId: row.question_id, createdAt: iso(row.created_at), analysis, related, crossroad, space,
+    material: isOriginal ? await materialForEntry(id) : null, comparison: isOriginal ? null : await comparisonFor(id), originalAvailable: !isOriginal && await originalAvailable(row.space_id)};
 }
 
 // ---------- crossroads ----------
