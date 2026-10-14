@@ -17,6 +17,8 @@ export async function POST(request: Request) {
     if (!(audio instanceof File) || !audio.size) return fail(400, 'EMPTY', '녹음이 비어 있어요. 다시 말해주세요.');
     if (audio.size > MAX_AUDIO) return fail(413, 'TOO_LARGE', '녹음이 너무 길어요. 45초 안으로 말해주세요.');
     const text = trimSpoken((await ai().transcribe(audio, audio.name || 'voice.webm')).trim());
+    // Diagnostics only (no transcript text): format and size explain most bad transcriptions.
+    console.log('[moons] transcribe', JSON.stringify({bytes: audio.size, type: audio.type, name: audio.name, chars: text.length, hangul: /[\uAC00-\uD7A3]/.test(text)}));
     if (!text) return fail(400, 'EMPTY', '목소리를 알아듣지 못했어요. 조금 더 크게, 천천히 말해주세요.');
     return Response.json({text});
   } catch (error) { return fromError(error); }

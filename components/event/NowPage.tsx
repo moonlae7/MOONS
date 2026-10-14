@@ -12,6 +12,15 @@ const FREE: Question = {id: '', kind: '떠오른 생각', text: '질문 없이, 
 const MAX_SECONDS = 45; // about 300 Korean characters of speech
 const MAX_CHARS = 300;
 
+// The phone's own dictation (Siri on iPhone, Google on Android). Words appear in the box as they are spoken.
+type Dictation = {lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void;
+  onresult: ((e: {results: ArrayLike<ArrayLike<{transcript: string}>>}) => void) | null; onerror: ((e: {error: string}) => void) | null; onend: (() => void) | null};
+function dictationCtor(): (new () => Dictation) | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as {SpeechRecognition?: new () => Dictation; webkitSpeechRecognition?: new () => Dictation};
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
 function pickMime() {
   if (typeof MediaRecorder === 'undefined') return '';
   return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) ?? '';
@@ -33,9 +42,10 @@ export default function NowPage({questions}: {questions: Question[]}) {
   const [fromVoice, setFromVoice] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), tick = useRef<ReturnType<typeof setInterval> | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
+  const dictation = useRef<Dictation | null>(null), useServer = useRef(false);
   const card = cards[index];
 
-  useEffect(() => { try { setNickname(localStorage.getItem('moons.nickname') ?? ''); } catch {} return () => { if (tick.current) clearInterval(tick.current); recorder.current?.stream.getTracks().forEach(t => t.stop()); }; }, []);
+  useEffect(() => { try { setNickname(localStorage.getItem('moons.nickname') ?? ''); } catch {} return () => { if (tick.current) clearInterval(tick.current); recorder.current?.stream.getTracks().forEach(t => t.stop()); dictation.current?.abort(); }; }, []);
 
   // Voice goes into the answer box first, so people can check and fix it before sending.
   async function transcribe(audio: Blob) {
@@ -64,9 +74,55 @@ export default function NowPage({questions}: {questions: Question[]}) {
     finally { setBusy(''); }
   }
 
+  function startTimer(stop: () => void) {
+    setSeconds(0);
+    const startedAt = Date.now();
+    if (tick.current) clearInterval(tick.current);
+    tick.current = setInterval(() => {
+      const s = Math.floor((Date.now() - startedAt) / 1000);
+      setSeconds(s);
+      if (s >= MAX_SECONDS) stop();
+    }, 500);
+  }
+
+  function startDictation(Ctor: new () => Dictation) {
+    const base = text.trim() ? `${text.trimEnd()} ` : '';
+    let heard = '', failed = '';
+    const rec = new Ctor();
+    rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = true;
+    rec.onresult = e => {
+      heard = Array.from(e.results, r => r[0].transcript.trim()).filter(Boolean).join(' ');
+      setText(`${base}${heard}`.slice(0, MAX_CHARS));
+    };
+    rec.onerror = e => { failed = e.error; };
+    rec.onend = () => {
+      dictation.current = null;
+      if (tick.current) clearInterval(tick.current);
+      setRecording(false);
+      if (heard.trim()) { setFromVoice(true); setTimeout(() => box.current?.focus(), 50); return; }
+      if (failed === 'not-allowed') { setError('마이크 권한을 허용해 주세요. 주소창의 설정에서 마이크를 켤 수 있어요.'); return; }
+      if (failed === 'service-not-allowed' || failed === 'network' || failed === 'language-not-supported') {
+        useServer.current = true; // this phone cannot dictate here; record and transcribe on the server instead
+        setError('이 휴대폰에서는 바로 받아쓰기가 안 돼요. "말로 답하기"를 한 번 더 누르면 녹음 방식으로 받아써요.');
+        return;
+      }
+      setError('목소리를 듣지 못했어요. 마이크 가까이에서 다시 말해 주세요.');
+    };
+    dictation.current = rec;
+    try { rec.start(); } catch { dictation.current = null; useServer.current = true; setError('받아쓰기를 시작하지 못했어요. 한 번 더 누르면 녹음 방식으로 받아써요.'); return; }
+    setRecording(true);
+    startTimer(() => rec.stop());
+  }
+
   async function toggleRecord() {
-    if (recording) { if (recorder.current?.state === 'recording') recorder.current.stop(); return; }
+    if (recording) {
+      if (dictation.current) dictation.current.stop();
+      else if (recorder.current?.state === 'recording') recorder.current.stop();
+      return;
+    }
     setError('');
+    const Ctor = useServer.current ? null : dictationCtor();
+    if (Ctor) { startDictation(Ctor); return; }
     const mime = pickMime();
     if (!navigator.mediaDevices?.getUserMedia || !mime) { setError('이 브라우저에서는 녹음을 쓸 수 없어요. 글로 적어주세요.'); return; }
     try {
@@ -81,13 +137,8 @@ export default function NowPage({questions}: {questions: Question[]}) {
         const blob = new Blob(chunks.current, {type: mime.split(';')[0]});
         if (blob.size > 2000) transcribe(blob); else setError('너무 짧아요. 조금 더 길게 말해주세요.');
       };
-      recorder.current = r; r.start(); setRecording(true); setSeconds(0);
-      const startedAt = Date.now();
-      tick.current = setInterval(() => {
-        const s = Math.floor((Date.now() - startedAt) / 1000);
-        setSeconds(s);
-        if (s >= MAX_SECONDS && r.state === 'recording') r.stop();
-      }, 500);
+      recorder.current = r; r.start(); setRecording(true);
+      startTimer(() => { if (r.state === 'recording') r.stop(); });
     } catch { setError('마이크를 쓸 수 없어요. 브라우저 권한을 확인하거나 글로 적어주세요.'); }
   }
 
