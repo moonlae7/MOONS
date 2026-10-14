@@ -38,7 +38,9 @@ function cameraError(error: unknown) {
 
 const COLORS = {pointer: {line: '150,210,255', glow: '120,180,255'}, spread: {line: '200,170,255', glow: '170,130,255'}};
 
-function paint(canvas: HTMLCanvasElement | null, hands: Drawn[], map: (p: Point) => Point, onUniverse: boolean, flash = 0, target: Point | null = null) {
+type Target = Point & {progress?: number};
+
+function paint(canvas: HTMLCanvasElement | null, hands: Drawn[], map: (p: Point) => Point, onUniverse: boolean, flash = 0, target: Target | null = null) {
   const ctx = canvas?.getContext('2d');
   if (!canvas || !ctx) return;
   const w = canvas.clientWidth, h = canvas.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -69,7 +71,12 @@ function paint(canvas: HTMLCanvasElement | null, hands: Drawn[], map: (p: Point)
       if (target && onUniverse) { // what a pinch would hit right now
         ctx.save(); ctx.setLineDash([5, 5]); ctx.lineWidth = 1.6; ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255,214,140,.9)';
         ctx.strokeStyle = 'rgba(255,226,170,.95)';
-        ctx.beginPath(); ctx.arc(target.x * w, target.y * h, 26, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        ctx.beginPath(); ctx.arc(target.x * w, target.y * h, 26, 0, Math.PI * 2); ctx.stroke();
+        if (target.progress) { // holding on a close button: the ring fills, then it closes
+          ctx.setLineDash([]); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,236,190,1)';
+          ctx.beginPath(); ctx.arc(target.x * w, target.y * h, 26, -Math.PI / 2, -Math.PI / 2 + target.progress * Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
       }
       ctx.shadowBlur = frame.pinching ? 22 : 12;
       ctx.shadowColor = frame.pinching ? 'rgba(255,214,140,1)' : 'rgba(140,190,255,1)';
@@ -92,13 +99,13 @@ const label = (status: Status, handed: Side) => {
   if (status.kind === 'error') return status.message ?? '손 인식을 시작하지 못했어요.';
   const [grab, open] = handed === 'right' ? ['오른손', '왼손'] : ['왼손', '오른손'];
   if (status.kind === 'waiting') return `두 손을 카메라에 보여주세요. ${grab}은 잡기, ${open}은 펼치기예요`;
-  return `${grab}: 집었다 놓기 클릭 · 집고 옮기기 / ${open}: 주먹 모으기 · 펴서 펼치기`;
+  return `${grab}: 집었다 놓기 클릭 · 집고 옮기기 · X에 1초 올리면 닫기 / ${open}: 주먹 모으기 · 펴서 펼치기`;
 };
 
 export default function HandControl({active, onEvents, probe, onClose}: {
   active: boolean;
   onEvents: (events: GestureEvent[]) => void;
-  probe: (cursor: Point) => Point | null; // screen point (0..1 of the stage) of what the cursor would hit
+  probe: (cursor: Point) => Target | null; // screen point (0..1 of the stage) of what the cursor would hit
   onClose: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null), preview = useRef<HTMLCanvasElement>(null), overlay = useRef<HTMLCanvasElement>(null);

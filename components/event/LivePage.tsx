@@ -48,6 +48,7 @@ export default function LivePage({space}: {space: SpaceInfo}) {
   // What the fingertip is on: a button or link first (constellation names, the card's X and link, the controls),
   // otherwise the star or planet drawn nearest to it.
   const grabbed = useRef<string | null>(null), hovered = useRef<HTMLElement | null>(null);
+  const dwell = useRef<{element: HTMLElement; since: number} | null>(null);
   const under = useCallback((p: Point) => {
     const at = toScreen(p), stage = document.querySelector('.lv-stage')?.getBoundingClientRect();
     const element = stage ? document.elementFromPoint(stage.left + at.x * stage.width, stage.top + at.y * stage.height)?.closest<HTMLElement>('a, button') ?? null : null;
@@ -60,13 +61,20 @@ export default function LivePage({space}: {space: SpaceInfo}) {
     else {setSelection(null);setShowList(false);}
   }, [under, select]);
   // Drawn by the hand overlay as a target ring, so people see what a pinch will hit.
+  // Close buttons also close by holding the cursor on them for a second; the ring fills as it counts.
   const probe = useCallback((p: Point) => {
     const {element, near, stage} = under(p);
     if (hovered.current !== element) {hovered.current?.classList.remove('uv-hand-hover');element?.classList.add('uv-hand-hover');hovered.current = element;}
     if (element && stage) {
       const r = element.getBoundingClientRect();
-      return {x: (r.left + r.width / 2 - stage.left) / stage.width, y: (r.top + r.height / 2 - stage.top) / stage.height};
+      const at = {x: (r.left + r.width / 2 - stage.left) / stage.width, y: (r.top + r.height / 2 - stage.top) / stage.height};
+      if (!element.matches('.uv-inspector header button')) {dwell.current = null;return at;}
+      if (dwell.current?.element !== element) dwell.current = {element, since: performance.now()};
+      const progress = (performance.now() - dwell.current.since) / 1000;
+      if (progress >= 1) {dwell.current = null;element.click();return null;}
+      return {...at, progress};
     }
+    dwell.current = null;
     return near ? {x: near.x, y: near.y} : null;
   }, [under]);
   // Pinch and release: click. Pinch on a planet and move: carry it there. Pinch elsewhere and move: turn the universe.

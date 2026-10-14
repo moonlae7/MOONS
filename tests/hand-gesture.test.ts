@@ -39,8 +39,8 @@ test('pinch and move turns the universe instead of selecting', () => {
   g.update(hand(), 0);
   g.update(hand({pinch: true}), 50);
   let orbit = 0;
-  for (let i = 1; i <= 8; i++) orbit += g.update(hand({pinch: true, x: 0.5 - i * 0.02}), 50 + i * 40).events.filter(e => e.type === 'orbit').length;
-  const after = g.update(hand({x: 0.34}), 500).events;
+  for (let i = 1; i <= 14; i++) orbit += g.update(hand({pinch: true, x: 0.5 - i * 0.02}), 50 + i * 40).events.filter(e => e.type === 'orbit').length;
+  const after = g.update(hand({x: 0.22}), 700).events;
   assert.ok(orbit > 0);
   assert.equal(after.some(e => e.type === 'select'), false);
 });
@@ -117,4 +117,22 @@ test('two hands with the same label are told apart by where they are on screen',
   // camera x 0.75 shows on the left of the mirrored screen
   const two = sides({landmarks: [hand({x: 0.25}), hand({x: 0.75})], handedness: [[{categoryName: 'Left'}], [{categoryName: 'Left'}]]});
   assert.deepEqual(two.map(h => h.side), ['right', 'left']);
+});
+
+test('a big hand close to the camera can pinch, wobble while closing, and still click', () => {
+  // palm length 0.4 of the frame: the hand is close. The pinch midpoint jumps 0.05 while it closes.
+  const big = (pinch: boolean, shift = 0): Point[] => {
+    const p = hand({pinch}).map(q => ({x: 0.5 + (q.x - 0.5) * 2, y: 0.4 + (q.y - 0.6) * 2 + shift}));
+    return p;
+  };
+  const g = new GestureTracker();
+  const events = run(g, [big(false), big(false), big(false), big(true), big(true, 0.05), big(true, 0.05), big(true, 0.06), big(false), big(false)], 0, 60);
+  assert.ok(events.some(e => e.type === 'select'), JSON.stringify(events.map(e => e.type)));
+  assert.equal(events.some(e => e.type === 'orbit'), false);
+});
+
+test('a slow pinch that is held a while still clicks', () => {
+  const g = new GestureTracker();
+  const events = run(g, [hand(), hand(), ...Array.from({length: 40}, () => hand({pinch: true})), hand()], 0, 50);
+  assert.ok(events.some(e => e.type === 'select'));
 });

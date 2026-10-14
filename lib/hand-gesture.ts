@@ -6,7 +6,7 @@
 //   close the hand / open it                 -> pull the stars in / spread them out
 //   tap twice with the index finger          -> click what is under the cursor (open a link, close a card)
 export type Point = {x: number; y: number};
-export type HandFrame = {cursor: Point; pinching: boolean; openness: number; index: number; middle: number; thumbGap: number; points: Point[]};
+export type HandFrame = {cursor: Point; pinching: boolean; openness: number; index: number; middle: number; thumbGap: number; palm: number; points: Point[]};
 export type GestureEvent =
   | {type: 'pinchStart'; x: number; y: number}            // where the finger pointed just before pinching
   | {type: 'select'; x: number; y: number}                // quick pinch and release: a click
@@ -20,8 +20,9 @@ export type HandRole = 'both' | 'pointer' | 'spread';
 
 const PINCH_ON = 0.3, PINCH_OFF = 0.45;   // thumb-index gap, in palm lengths (with hysteresis)
 const FIST = 1.05, OPEN = 1.7;            // average fingertip reach from the wrist, in palm lengths
-const MOVE = 0.04;                        // pinch travel that turns a pinch into a drag
-const TAP_MS = 1000, LOST_MS = 400;
+const MOVE = 0.45;                        // pinch travel, in palm lengths, that turns a pinch into a drag
+const SETTLE_MS = 180;                    // closing the pinch shifts the hand: ignore travel this long after it closes
+const TAP_MS = 2500, LOST_MS = 400;
 const AIM_MS = 220;                       // closing the pinch moves the index tip: aim from just before
 const DIP = 0.72, BACK = 0.88;            // index length falls below / returns above this share of its usual length
 const POKE_MS = 450, DOUBLE_MS = 800, NEAR = 0.08;
@@ -53,7 +54,8 @@ const mirror = (p: Point): Point => ({x: 1 - p.x, y: p.y}); // the camera faces 
 
 export function readHand(landmarks: Point[], wasPinching: boolean): HandFrame {
   const points = landmarks.map(mirror);
-  const palm = Math.max(1e-3, gap(points[0], points[9]));
+  // Palm length, or its width when the hand turns sideways and the length shrinks on camera.
+  const palm = Math.max(1e-3, gap(points[0], points[9]), gap(points[5], points[17]) * 1.25);
   const pinch = gap(points[4], points[8]) / palm;
   const reach = [8, 12, 16, 20].reduce((sum, i) => sum + gap(points[i], points[0]), 0) / 4 / palm;
   return {
@@ -63,6 +65,7 @@ export function readHand(landmarks: Point[], wasPinching: boolean): HandFrame {
     index: gap(points[8], points[5]) / palm,
     middle: gap(points[12], points[9]) / palm,
     thumbGap: pinch,
+    palm,
     points,
   };
 }
@@ -114,8 +117,9 @@ export class GestureTracker {
       this.pinchStart = {at: aim, mid: this.mid, time: now}; this.dragged = false;
       events.push({type: 'pinchStart', ...aim});
     } else if (frame.pinching && this.pinchStart && lastMid) {
+      if (!this.dragged && now - this.pinchStart.time < SETTLE_MS) this.pinchStart.mid = this.mid;
       const moved = {x: this.mid.x - this.pinchStart.mid.x, y: this.mid.y - this.pinchStart.mid.y};
-      if (!this.dragged && Math.hypot(moved.x, moved.y) > MOVE) this.dragged = true;
+      if (!this.dragged && Math.hypot(moved.x, moved.y) > MOVE * frame.palm) this.dragged = true;
       if (this.dragged) events.push({type: 'orbit', dx: this.mid.x - lastMid.x, dy: this.mid.y - lastMid.y, x: this.pinchStart.at.x + moved.x, y: this.pinchStart.at.y + moved.y});
     } else if (!frame.pinching && this.pinching && this.pinchStart) {
       if (!this.dragged && now - this.pinchStart.time < TAP_MS) events.push({type: 'select', ...this.pinchStart.at});
