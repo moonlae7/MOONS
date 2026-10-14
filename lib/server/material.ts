@@ -9,7 +9,6 @@ import {compareSystem, compareUser, compareSchema} from './prompts.ts';
 import {splitSentences, MATERIAL_PART_BYTES, type CompareItem, type CompareVerdict, type Comparison, type MaterialInfo} from '../thought.ts';
 
 const log = (...args: unknown[]) => console.log('[moons]', ...args); // never log transcripts or answers
-const RECORDING_HINT = '해커톤 파이어사이드 챗 녹음입니다. 한국어와 영어가 섞여 있을 수 있어요. OpenAI, Replit, AWS, AI, API 같은 단어가 나와요.';
 
 type MaterialRow = {id: string; space_id: string; entry_id: string | null; title: string; filename: string; mime: string; bytes: string | number; duration: number; status: string; sentence_times: number[]};
 
@@ -29,7 +28,7 @@ export async function putPart(id: string, seq: number, data: Uint8Array) {
 
 // One stretch of the recording (16kHz mono WAV from the browser) to text.
 export async function putChunk(id: string, seq: number, start: number, end: number, audio: Blob) {
-  const raw = await ai().transcribe(audio, `chunk-${seq}.wav`, {language: null, hint: RECORDING_HINT});
+  const raw = await ai().transcribe(audio, `chunk-${seq}.wav`, {language: null});
   const text = redact(cleanTranscript(raw.trim())).text;
   await q(`insert into material_chunks (material_id, seq, start_sec, end_sec, text) values ($1,$2,$3,$4,$5)
     on conflict (material_id, seq) do update set start_sec = excluded.start_sec, end_sec = excluded.end_sec, text = excluded.text`, [id, seq, start, end, text]);

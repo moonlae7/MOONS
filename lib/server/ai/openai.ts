@@ -2,9 +2,8 @@ import {AIError, type Embedder, type JsonTask, type MoonsAI} from './provider.ts
 
 const BASE = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'; // override only for local tests
 const HANGUL = /[\uAC00-\uD7A3]/;
-// Context for the speech model: Korean answers about the hackathon, English terms mixed in.
-const SPEECH_HINT = '해커톤 파이어사이드 챗에 대한 한국어 소감입니다. AI, API, OpenAI 같은 영어 단어가 섞일 수 있어요.';
 // Lines speech models invent on near-silence. Treated as nothing heard.
+// No prompt is sent by default: on quiet audio the model reads the prompt back as if it were heard.
 const PHANTOM = /시청해\s*주셔서\s*감사합니다|구독과\s*좋아요|자막\s*(제공|by)|MBC\s*뉴스|thanks?\s+for\s+watching/i;
 
 function key() {
@@ -25,6 +24,13 @@ async function call(path: string, init: RequestInit, timeoutMs = 60000) {
     if (error instanceof AIError) throw error;
     throw new AIError(`OpenAI ${path} failed: ${(error as Error).message}`, 'AI_FAILED');
   } finally { clearTimeout(timer); }
+}
+
+// The model read the prompt back instead of hearing speech.
+function echoes(text: string, hint: string) {
+  const squash = (s: string) => s.replace(/[\s.,!?]/g, '');
+  const t = squash(text), h = squash(hint);
+  return t.length >= 6 && (h.includes(t) || t.includes(h.slice(0, 12)));
 }
 
 export const openai: MoonsAI = {
@@ -66,15 +72,18 @@ export const openai: MoonsAI = {
       form.append('file', audio, filename);
       form.append('model', model);
       if (language) form.append('language', language);
-      form.append('prompt', opts.hint ?? SPEECH_HINT);
+      if (opts.hint) form.append('prompt', opts.hint);
       form.append('temperature', '0');
       const res = await call('/audio/transcriptions', {method: 'POST', body: form}, 60000);
       const text = ((await res.json() as {text?: string}).text ?? '').trim();
-      return PHANTOM.test(text) && text.length < 40 ? '' : text;
+      if (PHANTOM.test(text) && text.length < 40) return '';
+      if (opts.hint && echoes(text, opts.hint)) return '';
+      return text;
     };
     const primary = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
     const text = await once(primary);
-    if (!language || HANGUL.test(text) || primary === 'whisper-1') return text;
+    // Nothing heard stays nothing: asking Whisper again on silence only invents lines.
+    if (!text || !language || HANGUL.test(text) || primary === 'whisper-1') return text;
     // Korean speech sometimes comes back as a short English line. Ask Whisper once more and keep Korean if it hears it.
     try { const again = await once('whisper-1'); if (HANGUL.test(again)) return again; } catch {}
     return text;
