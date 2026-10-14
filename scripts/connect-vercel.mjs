@@ -36,12 +36,14 @@ writeFileSync(join(work, '.vercel', 'project.json'), JSON.stringify({projectId: 
 function cleanup() { try { rmSync(work, {recursive: true, force: true}); } catch {} }
 process.on('SIGINT', () => { cleanup(); process.exit(130); });
 
-function run(cmd, args, {input, capture = false} = {}) {
+// Captured commands never get the keyboard: a hidden prompt would hang the script.
+// They fail fast instead, and the script runs the interactive step (login) on its own.
+function run(cmd, args, {input, capture = false, timeout = 0} = {}) {
   const r = spawnSync(cmd, args, {
-    cwd: work, encoding: 'utf8', shell: isWin, input,
-    stdio: [input === undefined ? 'inherit' : 'pipe', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
+    cwd: work, encoding: 'utf8', shell: isWin, input, timeout: timeout || undefined,
+    stdio: [input !== undefined ? 'pipe' : capture ? 'ignore' : 'inherit', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
   });
-  return {ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`};
+  return {ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, timedOut: r.error?.code === 'ETIMEDOUT'};
 }
 const vercel = (args, opts) => run('npx', ['-y', 'vercel@latest', ...args], opts);
 
@@ -83,11 +85,14 @@ if (!embed) say('주의: text-embedding-3-small을 못 쓰면 생각끼리 연�
 
 // 2. Vercel login
 step(2, 'Vercel 로그인 확인');
-if (!vercel(['whoami', '--non-interactive'], {capture: true}).ok) {
-  say('브라우저에서 Vercel 로그인을 마쳐 주세요.');
+say('Vercel CLI를 준비하는 중이에요. 처음에는 1분 정도 걸릴 수 있어요.');
+const me = vercel(['whoami', '--non-interactive'], {capture: true, timeout: 180000});
+if (me.ok) say(`로그인됨: ${me.out.trim().split(/\r?\n/).pop()}`);
+else {
+  say('Vercel 로그인이 필요해요. 아래 안내대로 브라우저에서 로그인을 마쳐 주세요.');
   if (!vercel(['login']).ok) fail('Vercel 로그인을 마치지 못했어요.');
 }
-const listed = vercel(['env', 'ls', 'production', '--scope', SCOPE, '--non-interactive'], {capture: true});
+const listed = vercel(['env', 'ls', 'production', '--scope', SCOPE, '--non-interactive'], {capture: true, timeout: 180000});
 if (!listed.ok) fail(`moons 프로젝트의 환경변수를 읽지 못했어요. ${SCOPE} 팀에 접근할 수 있는 계정으로 로그인했는지 확인해 주세요.\n${listed.out.slice(-400)}`);
 const has = name => new RegExp(`\\b${name}\\b`).test(listed.out);
 
@@ -119,12 +124,12 @@ else env.ADMIN_TOKEN = adminToken = randomBytes(24).toString('hex');
 // 4. Write env vars and redeploy
 step(4, 'Vercel에 환경변수 저장 후 재배포');
 for (const [name, value] of Object.entries(env)) {
-  const r = vercel(['env', 'add', name, 'production', '--force', '--scope', SCOPE], {input: value, capture: true});
+  const r = vercel(['env', 'add', name, 'production', '--force', '--scope', SCOPE], {input: value, capture: true, timeout: 120000});
   if (!r.ok) fail(`${name} 저장 실패.\n${r.out.slice(-400)}`);
   say(`  ${name} 저장됨`);
 }
 say('재배포 중이에요. 1~2분 걸려요.');
-const deployed = vercel(['redeploy', SITE, '--target', 'production', '--scope', SCOPE, '--non-interactive'], {capture: true});
+const deployed = vercel(['redeploy', SITE, '--target', 'production', '--scope', SCOPE, '--non-interactive'], {capture: true, timeout: 600000});
 if (!deployed.ok) fail(`재배포 실패. Vercel 대시보드의 Deployments에서 Redeploy를 눌러 주세요.\n${deployed.out.slice(-400)}`);
 
 // 5. Health check
