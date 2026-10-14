@@ -9,7 +9,8 @@ import type {Question} from '@/lib/thought';
 
 type Sent = {id: string; text: string; input: 'text' | 'voice'; redacted: number};
 const FREE: Question = {id: '', kind: '떠오른 생각', text: '질문 없이, 지금 머릿속에 있는 것 아무거나.'};
-const MAX_SECONDS = 60;
+const MAX_SECONDS = 45; // about 300 Korean characters of speech
+const MAX_CHARS = 300;
 
 function pickMime() {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -19,7 +20,8 @@ function pickMime() {
 export default function NowPage({questions}: {questions: Question[]}) {
   // Icebreaking first: open on a random question so answers spread across planets. Free input is the last card.
   const router = useRouter();
-  const cards = [...questions, FREE];
+  const cards = questions.length ? questions : [FREE];
+  const single = cards.length === 1;
   const [index, setIndex] = useState(0);
   useEffect(() => { if (questions.length > 1) setIndex(Math.floor(Math.random() * questions.length)); }, [questions.length]);
   const [text, setText] = useState('');
@@ -84,21 +86,22 @@ export default function NowPage({questions}: {questions: Question[]}) {
     <header className="now-top"><span className="ev-mark"><LineLogo/></span><Link href="/universe" className="ev-back right">우주 보기</Link></header>
     <main className="now-main">
       <h1>당신의 뇌를<br/>스캔해 드립니다</h1>
-      <p className="now-sub">질문 하나에 말로 답해 주세요. MOONS가 당신이 이해한 모양 그대로 그려 드려요. 답은 큰 화면 우주에 별로도 떠요.</p>
+      <p className="now-sub">아래 질문에 말이나 글로 답해 주세요. MOONS가 당신이 이해한 모양 그대로 그려 드려요. 답은 큰 화면 우주에 별로도 떠요.</p>
 
       <section className="now-card" aria-live="polite">
-        <div className="now-card-top"><span className="ev-eyebrow">{card.id ? card.kind : '자유'} · {index + 1} / {cards.length}</span>
-          <span className="now-nav">
+        <div className="now-card-top"><span className="ev-eyebrow">{card.id ? card.kind : '자유'}{single ? '' : ` · ${index + 1} / ${cards.length}`}</span>
+          {!single && <span className="now-nav">
             <button aria-label="이전 질문" onClick={() => setIndex((index - 1 + cards.length) % cards.length)}><ArrowLeft size={17}/></button>
             <button aria-label="다음 질문" onClick={() => setIndex((index + 1) % cards.length)}><ArrowRight size={17}/></button>
-          </span>
+          </span>}
         </div>
         <p>{card.text}</p>
       </section>
 
       <form className="now-form" onSubmit={e => { e.preventDefault(); if (text.trim()) submit(); }}>
         <label htmlFor="now-text" className="sr-only">생각</label>
-        <textarea id="now-text" value={text} onChange={e => setText(e.target.value)} maxLength={1000} rows={5} placeholder={recording ? '듣고 있어요…' : '말하거나 적어주세요. 정리 안 해도 돼요.'} disabled={recording || !!busy}/>
+        <textarea id="now-text" value={text} onChange={e => setText(e.target.value)} maxLength={MAX_CHARS} rows={5} placeholder={recording ? '듣고 있어요…' : `말하거나 적어주세요. ${MAX_CHARS}자까지, 정리 안 해도 돼요.`} disabled={recording || !!busy}/>
+        <span className="now-count" aria-live="polite">{text.length} / {MAX_CHARS}</span>
         <div className="now-buttons">
           <button type="button" className={`now-mic ${recording ? 'on' : ''}`} onClick={toggleRecord} disabled={!!busy} aria-pressed={recording}>
             {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>알아듣는 중…</> : <><Mic size={17}/>말로 답하기</>}

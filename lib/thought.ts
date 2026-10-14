@@ -55,7 +55,7 @@ export type EntryKind = 'spark' | 'quiz' | 'decision' | 'media';
 export type EntryStatus = 'saved' | 'analyzing' | 'done' | 'failed' | 'held';
 
 export type Planet = { id: string; name: string; color: string; x: number; y: number };
-export type Question = { id: string; kind: '고민' | '떠오른 생각' | '개발 퀴즈' | '소감' | '아이스브레이킹' | '가벼운 질문' | '개념 질문' | '상식 퀴즈'; text: string; planetId?: string };
+export type Question = { id: string; kind: '고민' | '떠오른 생각' | '개발 퀴즈' | '소감' | '아이스브레이킹' | '가벼운 질문' | '개념 질문' | '상식 퀴즈' | '파이어사이드 챗'; text: string; planetId?: string };
 export type SpaceInfo = { id: string; name: string; tagline: string; planets: Planet[]; questions: Question[] };
 
 export const linkKinds = ['fills_gap', 'same_mistake', 'contradicts', 'supports', 'decides'] as const;

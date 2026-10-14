@@ -5,7 +5,15 @@ import {redact} from '@/lib/server/redact';
 import {clientIp, fail, fromError, limited, participantOk} from '@/lib/server/http';
 
 export const maxDuration = 120;
-const MAX_TEXT = 1000, MAX_AUDIO = 6 * 1024 * 1024;
+const MAX_TEXT = 300, MAX_AUDIO = 6 * 1024 * 1024;
+
+// Keep a spoken answer within MAX_TEXT, ending on a sentence when one ends late enough.
+function trimSpoken(text: string) {
+  if (text.length <= MAX_TEXT) return text;
+  const cut = text.slice(0, MAX_TEXT);
+  const end = Math.max(...['.', '!', '?', '。', '\n'].map(c => cut.lastIndexOf(c)));
+  return end >= MAX_TEXT * 0.6 ? cut.slice(0, end + 1) : cut;
+}
 
 export async function POST(request: Request, ctx: RouteContext<'/api/spaces/[spaceId]/entries'>) {
   const {spaceId} = await ctx.params;
@@ -31,9 +39,9 @@ export async function POST(request: Request, ctx: RouteContext<'/api/spaces/[spa
       text = await ai().transcribe(audio, audio.name || 'voice.webm');
       input = 'voice';
     }
-    text = text.trim();
+    text = input === 'voice' ? trimSpoken(text.trim()) : text.trim();
     if (!text) return fail(400, 'EMPTY', input === 'voice' ? '목소리를 알아듣지 못했어요. 다시 말해주세요.' : '생각을 한 줄이라도 적어주세요.');
-    if (text.length > (input === 'voice' ? MAX_TEXT * 2 : MAX_TEXT)) return fail(413, 'TOO_LONG', `${MAX_TEXT}자 안으로 줄여주세요.`);
+    if (text.length > MAX_TEXT) return fail(413, 'TOO_LONG', `${MAX_TEXT}자 안으로 줄여주세요.`);
     const masked = redact(text);
     await ensureSpace(space);
     const q = typeof questionId === 'string' && space.questions.some(x => x.id === questionId) ? questionId : null;
