@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GestureTracker, readHand, type Point} from '../lib/hand-gesture.ts';
+import {GestureTracker, readHand, sides, type Point} from '../lib/hand-gesture.ts';
 
 // A right hand facing the camera: wrist low, knuckles above. `curl` 0 is an open hand, 1 a fist.
 function hand({x = 0.5, y = 0.6, curl = 0, pinch = false, poke = false}: {x?: number; y?: number; curl?: number; pinch?: boolean; poke?: boolean} = {}): Point[] {
@@ -57,7 +57,7 @@ test('losing the hand is reported once', () => {
   const g = new GestureTracker();
   g.update(hand(), 0);
   assert.equal(g.update(null, 100).events.length, 0);
-  assert.deepEqual(g.update(null, 600).events, [{type: 'lost'}]);
+  assert.deepEqual(g.update(null, 600).events, [{type: 'lost', role: 'both'}]);
   assert.equal(g.update(null, 900).events.length, 0);
 });
 
@@ -94,4 +94,27 @@ test('a real pinch clicks where the index pointed before closing, not where it c
   assert.ok(Math.abs(click.x - (1 - open[8].x)) < 0.02 && Math.abs(click.y - open[8].y) < 0.02, JSON.stringify(click));
   assert.equal(events.some(e => e.type === 'orbit'), false);
   assert.deepEqual(events.filter(e => e.type === 'pinchStart' || e.type === 'pinchEnd').map(e => e.type), ['pinchStart', 'pinchEnd']);
+});
+
+test('with two hands, the pointing hand clicks and the other only spreads', () => {
+  const pointer = new GestureTracker('pointer'), spreader = new GestureTracker('spread');
+  const pointed = [hand(), hand({pinch: true}), hand(), hand({curl: 1})].flatMap((f, i) => pointer.update(f, i * 100).events);
+  assert.ok(pointed.some(e => e.type === 'select'));
+  assert.equal(pointed.some(e => e.type === 'spread'), false);
+  const spread = [hand(), hand({pinch: true}), hand({curl: 1}), hand()].flatMap((f, i) => spreader.update(f, i * 100).events);
+  assert.ok(spread.every(e => e.type === 'spread') && spread.length === 4, JSON.stringify(spread));
+  assert.deepEqual(spreader.update(null, 2000).events, [{type: 'lost', role: 'spread'}]);
+});
+
+test('webcam frames are not mirrored, so MediaPipe "Left" is the person\'s right hand', () => {
+  const one = sides({landmarks: [hand()], handedness: [[{categoryName: 'Left'}]]});
+  assert.equal(one[0].side, 'right');
+  const two = sides({landmarks: [hand({x: 0.3}), hand({x: 0.7})], handedness: [[{categoryName: 'Right'}], [{categoryName: 'Left'}]]});
+  assert.deepEqual(two.map(h => h.side), ['left', 'right']);
+});
+
+test('two hands with the same label are told apart by where they are on screen', () => {
+  // camera x 0.75 shows on the left of the mirrored screen
+  const two = sides({landmarks: [hand({x: 0.25}), hand({x: 0.75})], handedness: [[{categoryName: 'Left'}], [{categoryName: 'Left'}]]});
+  assert.deepEqual(two.map(h => h.side), ['right', 'left']);
 });

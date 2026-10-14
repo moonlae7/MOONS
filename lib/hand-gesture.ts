@@ -14,7 +14,9 @@ export type GestureEvent =
   | {type: 'doubleTap'; x: number; y: number}
   | {type: 'orbit'; dx: number; dy: number; x: number; y: number} // drag step, and where the dragged point is now
   | {type: 'spread'; value: number}
-  | {type: 'lost'};
+  | {type: 'lost'; role: HandRole};
+// With two hands, one points and grabs, the other pulls the stars in and spreads them out.
+export type HandRole = 'both' | 'pointer' | 'spread';
 
 const PINCH_ON = 0.3, PINCH_OFF = 0.45;   // thumb-index gap, in palm lengths (with hysteresis)
 const FIST = 1.05, OPEN = 1.7;            // average fingertip reach from the wrist, in palm lengths
@@ -23,6 +25,28 @@ const TAP_MS = 1000, LOST_MS = 400;
 const AIM_MS = 220;                       // closing the pinch moves the index tip: aim from just before
 const DIP = 0.72, BACK = 0.88;            // index length falls below / returns above this share of its usual length
 const POKE_MS = 450, DOUBLE_MS = 800, NEAR = 0.08;
+
+export type Side = 'left' | 'right';
+type Category = {categoryName: string};
+export type HandResult = {landmarks: Point[][]; handedness?: Category[][]; handednesses?: Category[][]};
+
+// Which of the person's hands each detection is. MediaPipe labels hands as if the image were mirrored;
+// webcam frames are not, so its "Left" is the person's right hand. If both come back the same,
+// the hand further left on the (mirrored) screen is the left one.
+export function sides(result: HandResult): {points: Point[]; side: Side}[] {
+  const labels = result.handedness ?? result.handednesses ?? [];
+  const found = result.landmarks.map((points, i) => {
+    const label = labels[i]?.[0]?.categoryName;
+    return {points, side: (label === 'Left' ? 'right' : label === 'Right' ? 'left' : null) as Side | null};
+  });
+  if (found.length === 2 && (found[0].side === found[1].side || !found[0].side || !found[1].side)) {
+    const screenX = (points: Point[]) => 1 - points[0].x;
+    const [a, b] = found;
+    const aLeft = screenX(a.points) < screenX(b.points);
+    a.side = aLeft ? 'left' : 'right'; b.side = aLeft ? 'right' : 'left';
+  }
+  return found.map(f => ({points: f.points, side: f.side ?? 'right'}));
+}
 
 const gap = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const mirror = (p: Point): Point => ({x: 1 - p.x, y: p.y}); // the camera faces the person, the screen should not
@@ -44,6 +68,9 @@ export function readHand(landmarks: Point[], wasPinching: boolean): HandFrame {
 }
 
 export class GestureTracker {
+  private role: HandRole;
+  constructor(role: HandRole = 'both') { this.role = role; }
+
   private pinching = false;
   private cursor: Point | null = null;
   private pinchStart: {at: Point; mid: Point; time: number} | null = null;
@@ -66,7 +93,7 @@ export class GestureTracker {
         if (this.pinchStart) events.push({type: 'pinchEnd', dragged: this.dragged});
         this.gone = true; this.pinching = false; this.pinchStart = null; this.cursor = null; this.mid = null; this.trail = [];
         this.indexBase = 0; this.middleBase = 0; this.poke = null; this.lastTap = null; this.steady = null;
-        events.push({type: 'lost'});
+        events.push({type: 'lost', role: this.role});
       }
       return {frame: null, events};
     }
@@ -95,10 +122,12 @@ export class GestureTracker {
       events.push({type: 'pinchEnd', dragged: this.dragged});
       this.pinchStart = null;
     }
-    if (!frame.pinching) events.push({type: 'spread', value: frame.openness});
+    // A closing fist can look like a pinch, so the spreading hand never waits for one to end.
+    if (this.role === 'spread' || !frame.pinching) events.push({type: 'spread', value: frame.openness});
     this.tap(frame, now, events);
     this.pinching = frame.pinching;
-    return {frame, events};
+    const keep = (e: GestureEvent) => this.role === 'both' || (this.role === 'pointer' ? e.type !== 'spread' : e.type === 'spread');
+    return {frame, events: events.filter(keep)};
   }
 
   private tap(frame: HandFrame, now: number, events: GestureEvent[]) {

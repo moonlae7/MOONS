@@ -140,8 +140,24 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
     if (event.type === 'pointercancel' || gesture || !down || down.id !== event.pointerId || !thoughts) {down = null; return;}
     down = null;
     const rect = canvas.getBoundingClientRect();
-    const picked = pick((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height, 1.1);
-    if (picked) callbacks.select(picked);
+    // Stars are a few pixels wide: take the nearest one within reach of the click instead of an exact hit.
+    const near = nearest((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height, 24);
+    if (near?.selection) callbacks.select(near.selection);
+  }
+  // The star or planet drawn closest to a screen point (x, y 0..1), within `radius` pixels. Mice and hands are not that precise.
+  function nearest(x: number, y: number, radius: number, planetsOnly = false) {
+    const width = host.clientWidth, height = host.clientHeight, point = new THREE.Vector3();
+    let best: {selection: UniverseSelection; x: number; y: number; distance: number} | null = null;
+    const consider = (selection: NonNullable<UniverseSelection>, position: Position3) => {
+      point.set(...position).multiplyScalar(spread).project(camera);
+      if (point.z < -1 || point.z > 1) return;
+      const sx = (point.x * .5 + .5), sy = (-point.y * .5 + .5);
+      const distance = Math.hypot((sx - x) * width, (sy - y) * height);
+      if (distance <= radius && (!best || distance < best.distance)) best = {selection, x: sx, y: sy, distance};
+    };
+    for (const cluster of layout.clusters) consider({kind: 'planet', id: cluster.id}, cluster.position);
+    if (!planetsOnly) for (const star of layout.stars) consider({kind: 'thought', id: star.id}, star.position);
+    return best as {selection: UniverseSelection; x: number; y: number; distance: number} | null;
   }
   // x and y are 0..1 across the canvas. A hand is less exact than a mouse, so it gets a wider reach.
   function pick(x: number, y: number, reach: number): UniverseSelection {
@@ -188,21 +204,7 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
     rotate(horizontal: number, vertical: number) {
       flight = null;controls.rotateLeft(horizontal);controls.rotateUp(vertical);invalidate();
     },
-    // The star or planet drawn closest to a screen point (x, y 0..1), within `radius` pixels. Hands are not precise.
-    nearest(x: number, y: number, radius: number, planetsOnly = false) {
-      const width = host.clientWidth, height = host.clientHeight, point = new THREE.Vector3();
-      let best: {selection: UniverseSelection; x: number; y: number; distance: number} | null = null;
-      const consider = (selection: NonNullable<UniverseSelection>, position: Position3) => {
-        point.set(...position).multiplyScalar(spread).project(camera);
-        if (point.z < -1 || point.z > 1) return;
-        const sx = (point.x * .5 + .5), sy = (-point.y * .5 + .5);
-        const distance = Math.hypot((sx - x) * width, (sy - y) * height);
-        if (distance <= radius && (!best || distance < best.distance)) best = {selection, x: sx, y: sy, distance};
-      };
-      for (const cluster of layout.clusters) consider({kind: 'planet', id: cluster.id}, cluster.position);
-      if (!planetsOnly) for (const star of layout.stars) consider({kind: 'thought', id: star.id}, star.position);
-      return best as {selection: UniverseSelection; x: number; y: number; distance: number} | null;
-    },
+    nearest,
     // Where a planet lands if the hand holds it at screen point (x, y): same depth from the camera, under the hand.
     planetPoint(id: string, x: number, y: number): Position3 | null {
       const cluster = layout.clusters.find(c => c.id === id);

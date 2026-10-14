@@ -87,7 +87,10 @@ export default function LivePage({space}: {space: SpaceInfo}) {
         grabbed.current = null;
       } else if (event.type === 'select' || event.type === 'doubleTap') click(event);
       else if (event.type === 'spread') scene.current?.spread(0.12 + event.value * 1.13);
-      else {scene.current?.spread(1);hovered.current?.classList.remove('uv-hand-hover');hovered.current = null;}
+      else if (event.type === 'lost') {
+        if (event.role !== 'pointer') scene.current?.spread(1);
+        if (event.role !== 'spread') {hovered.current?.classList.remove('uv-hand-hover');hovered.current = null;grabbed.current = null;}
+      }
     }
   }, [under, click]);
   // Lets a browser test feed gestures without a camera. Only with #handtest in the address.

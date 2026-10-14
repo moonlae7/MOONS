@@ -134,6 +134,12 @@
 }
 
 
+/* A constellation's thoughts open on the right, under the stats. */
+.uv-inspector:not(.reading) { left: auto; right: 44px; top: 270px; bottom: auto; max-height: min(460px, calc(100% - 440px)); }
+@media (max-width: 650px) {
+  .uv-inspector:not(.reading) { left: 20px; right: 20px; top: auto; bottom: 186px; width: auto; max-height: 43svh; }
+}
+
 /* A picked thought is read from across the room: centered, three times the size of the side card. */
 .uv-inspector.reading { left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%); width: min(1110px, calc(100% - 48px)); max-height: min(86svh, 980px); padding: clamp(22px, 3.4vw, 54px) clamp(24px, 4vw, 66px); border-radius: clamp(18px, 2vw, 32px); z-index: 5; }
 .uv-inspector.reading header { margin-bottom: clamp(12px, 2vw, 32px); }
@@ -148,14 +154,17 @@
 
 /* Hand control: a mirrored webcam preview with the tracked hand, plus a cursor drawn over the universe. */
 .uv-hand { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6; }
-.uv-cam { position: absolute; right: 44px; bottom: 150px; width: 240px; z-index: 4; border: 1px solid var(--uv-border); border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 10px 40px #0008; }
+.uv-cam { position: absolute; left: 44px; top: 100px; width: 240px; z-index: 4; border: 1px solid var(--uv-border); border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 10px 40px #0008; }
 .uv-cam-view { position: relative; aspect-ratio: 4 / 3; }
 .uv-cam-view video, .uv-cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .uv-cam-view video { transform: scaleX(-1); }
 .uv-cam p { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.5; color: var(--lv-ink); background: var(--uv-glass); word-break: keep-all; }
 .uv-cam p.error { color: #ffb4a2; }
-.uv-cam button { flex: none; font-size: 11px; color: var(--lv-muted); }
+.uv-cam-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 10px 10px; background: var(--uv-glass); }
+.uv-cam-actions button { flex: none; font-size: 11px; color: var(--lv-muted); min-height: 30px; }
+.uv-cam-actions .uv-handed { padding: 4px 14px; border: 1px solid var(--uv-border); border-radius: 999px; color: var(--lv-ink); font-size: 12px; font-weight: 600; }
+.uv-cam-actions .uv-handed:hover { border-color: var(--lv-muted); }
 @media (max-width: 650px) {
-  .uv-cam { top: 70px; bottom: auto; right: 16px; width: 150px; }
+  .uv-cam { top: 70px; left: auto; right: 16px; width: 150px; }
 }
 .uv-hand-hover { outline: 2px solid #ffe2aa; outline-offset: 4px; border-radius: 10px; box-shadow: 0 0 18px #ffd28c66; }
