@@ -32,7 +32,7 @@ function cameraError(error: unknown) {
   return '카메라를 켜지 못했어요. 다시 켜 주세요.';
 }
 
-function paint(canvas: HTMLCanvasElement | null, frame: HandFrame | null, map: (p: Point) => Point, cursor: boolean, flash = 0) {
+function paint(canvas: HTMLCanvasElement | null, frame: HandFrame | null, map: (p: Point) => Point, cursor: boolean, flash = 0, target: Point | null = null) {
   const ctx = canvas?.getContext('2d');
   if (!canvas || !ctx) return;
   const w = canvas.clientWidth, h = canvas.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -41,7 +41,7 @@ function paint(canvas: HTMLCanvasElement | null, frame: HandFrame | null, map: (
   ctx.clearRect(0, 0, w, h);
   if (!frame) return;
   const at = (p: Point) => { const s = map(p); return [s.x * w, s.y * h] as const; };
-  ctx.lineWidth = cursor ? 1.2 : 2; ctx.strokeStyle = cursor ? 'rgba(150,200,255,.35)' : 'rgba(150,210,255,.95)';
+  ctx.lineWidth = cursor ? 1.2 : 2; ctx.strokeStyle = cursor ? 'rgba(150,200,255,.22)' : 'rgba(150,210,255,.95)';
   ctx.shadowColor = 'rgba(120,180,255,.9)'; ctx.shadowBlur = cursor ? 6 : 4;
   ctx.beginPath();
   for (const [a, b] of BONES) { const [x1, y1] = at(frame.points[a]), [x2, y2] = at(frame.points[b]); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
@@ -49,6 +49,11 @@ function paint(canvas: HTMLCanvasElement | null, frame: HandFrame | null, map: (
   ctx.fillStyle = cursor ? 'rgba(210,230,255,.5)' : '#fff';
   for (const p of frame.points) { const [x, y] = at(p); ctx.beginPath(); ctx.arc(x, y, cursor ? 1.8 : 2.6, 0, Math.PI * 2); ctx.fill(); }
   const [cx, cy] = at(frame.cursor);
+  if (target) { // what a pinch would hit right now
+    ctx.save(); ctx.setLineDash([5, 5]); ctx.lineWidth = 1.6; ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255,214,140,.9)';
+    ctx.strokeStyle = 'rgba(255,226,170,.95)';
+    ctx.beginPath(); ctx.arc(target.x * w, target.y * h, 26, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   ctx.shadowBlur = frame.pinching ? 22 : 12;
   ctx.shadowColor = frame.pinching ? 'rgba(255,214,140,1)' : 'rgba(140,190,255,1)';
   ctx.strokeStyle = frame.pinching ? 'rgba(255,224,170,.95)' : 'rgba(190,220,255,.9)';
@@ -64,19 +69,20 @@ function paint(canvas: HTMLCanvasElement | null, frame: HandFrame | null, map: (
 const label = (status: Status) => status.kind === 'camera' ? '카메라 켜는 중…'
   : status.kind === 'loading' ? '손 인식 준비 중… 처음 한 번은 20초쯤 걸려요'
   : status.kind === 'waiting' ? '손바닥을 카메라에 보여주세요'
-  : status.kind === 'tracking' ? '인식 중 · 집기 선택 · 검지 두 번 톡톡 누르기 · 주먹 모으기 · 펴기 펼치기'
+  : status.kind === 'tracking' ? '인식 중 · 집었다 놓기 클릭 · 모행성 집고 옮기기 · 주먹 모으기 · 펴기 펼치기'
   : status.message ?? '손 인식을 시작하지 못했어요.';
 
-export default function HandControl({active, onEvents, onClose}: {
+export default function HandControl({active, onEvents, probe, onClose}: {
   active: boolean;
   onEvents: (events: GestureEvent[]) => void;
+  probe: (cursor: Point) => Point | null; // screen point (0..1 of the stage) of what the cursor would hit
   onClose: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null), preview = useRef<HTMLCanvasElement>(null), overlay = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<Status>({kind: 'camera'});
   const [aspect, setAspect] = useState('4 / 3');
-  const emit = useRef(onEvents);
-  emit.current = onEvents;
+  const emit = useRef(onEvents), aim = useRef(probe);
+  emit.current = onEvents; aim.current = probe;
 
   useEffect(() => {
     if (!active) return;
@@ -113,7 +119,7 @@ export default function HandControl({active, onEvents, onClose}: {
       if (events.some(e => e.type === 'doubleTap')) tapped = now;
       const flash = Math.max(0, 1 - (now - tapped) / 400);
       paint(preview.current, frame, p => p, false, flash);
-      paint(overlay.current, frame, toScreen, true, flash);
+      paint(overlay.current, frame, toScreen, true, flash, frame ? aim.current(frame.cursor) : null);
       if (events.length) emit.current(events);
     };
 

@@ -5,7 +5,7 @@ import {ArrowUpRight, Expand, Hand, List, Minus, Network, Pause, Play, Plus, Rot
 import {timeLabel} from '@/lib/client';
 import {linkKinds, linkLabels, type SpaceInfo, type UniverseDTO} from '@/lib/thought';
 import type {UniverseSelection} from '@/lib/live-universe';
-import type {GestureEvent} from '@/lib/hand-gesture';
+import type {GestureEvent, Point} from '@/lib/hand-gesture';
 import UniverseScene, {type SceneHandle} from './live-universe/UniverseScene';
 import FlatUniverse from './live-universe/FlatUniverse';
 import ThoughtInspector from './live-universe/ThoughtInspector';
@@ -45,25 +45,56 @@ export default function LivePage({space}: {space: SpaceInfo}) {
   const latest = useMemo(() => [...view.thoughts].reverse().find(t => t.status === 'done' && t.kind !== 'decision'), [view]);
   const reset = useCallback(() => {setSelection(null);setShowList(false);scene.current?.reset();}, []);
   const select = useCallback((next: UniverseSelection) => {setSelection(next);setShowList(false);}, []);
-  // Pinch to pick a star, pinch and move to turn, fist to pull every thought in, open hand to spread them out.
-  // Two index taps click whatever is under the fingertip: the card's link opens its page, its X closes it.
+  // What the fingertip is on: a button or link first (constellation names, the card's X and link, the controls),
+  // otherwise the star or planet drawn nearest to it.
+  const grabbed = useRef<string | null>(null), hovered = useRef<HTMLElement | null>(null);
+  const under = useCallback((p: Point) => {
+    const at = toScreen(p), stage = document.querySelector('.lv-stage')?.getBoundingClientRect();
+    const element = stage ? document.elementFromPoint(stage.left + at.x * stage.width, stage.top + at.y * stage.height)?.closest<HTMLElement>('a, button') ?? null : null;
+    return {at, stage, element, near: element ? null : scene.current?.nearest(at.x, at.y, 64) ?? null};
+  }, []);
+  const click = useCallback((p: Point) => {
+    const {element, near} = under(p);
+    if (element) element.click();
+    else if (near?.selection) select(near.selection);
+    else {setSelection(null);setShowList(false);}
+  }, [under, select]);
+  // Drawn by the hand overlay as a target ring, so people see what a pinch will hit.
+  const probe = useCallback((p: Point) => {
+    const {element, near, stage} = under(p);
+    if (hovered.current !== element) {hovered.current?.classList.remove('uv-hand-hover');element?.classList.add('uv-hand-hover');hovered.current = element;}
+    if (element && stage) {
+      const r = element.getBoundingClientRect();
+      return {x: (r.left + r.width / 2 - stage.left) / stage.width, y: (r.top + r.height / 2 - stage.top) / stage.height};
+    }
+    return near ? {x: near.x, y: near.y} : null;
+  }, [under]);
+  // Pinch and release: click. Pinch on a planet and move: carry it there. Pinch elsewhere and move: turn the universe.
+  // Two index taps also click. Fist pulls every thought in, an open hand spreads them out.
   const gesture = useCallback((events: GestureEvent[]) => {
     for (const event of events) {
-      if (event.type === 'doubleTap') {
-        const at = toScreen(event), stage = document.querySelector('.lv-stage')?.getBoundingClientRect();
-        const target = stage && document.elementFromPoint(stage.left + at.x * stage.width, stage.top + at.y * stage.height)?.closest<HTMLElement>('a, button');
-        if (target) {target.click(); continue;}
-        const picked = scene.current?.pickAt(at.x, at.y) ?? null;
-        if (picked) select(picked); else {setSelection(null);setShowList(false);}
-      } else if (event.type === 'select') {
-        const at = toScreen(event);
-        const picked = scene.current?.pickAt(at.x, at.y) ?? null;
-        if (picked) select(picked); else {setSelection(null);setShowList(false);}
-      } else if (event.type === 'orbit') scene.current?.rotate(event.dx * 4.2, event.dy * 3);
+      if (event.type === 'pinchStart') {
+        const {element, at} = under(event);
+        grabbed.current = element?.dataset.planet ?? (() => {
+          const near = scene.current?.nearest(at.x, at.y, 72, true);
+          return near?.selection?.kind === 'planet' ? near.selection.id : null;
+        })();
+      } else if (event.type === 'orbit') {
+        if (grabbed.current) {const at = toScreen(event);scene.current?.movePlanet(grabbed.current, at.x, at.y);}
+        else scene.current?.rotate(event.dx * 4.2, event.dy * 3);
+      } else if (event.type === 'pinchEnd') {
+        if (grabbed.current && event.dragged) scene.current?.savePlanets();
+        grabbed.current = null;
+      } else if (event.type === 'select' || event.type === 'doubleTap') click(event);
       else if (event.type === 'spread') scene.current?.spread(0.12 + event.value * 1.13);
-      else scene.current?.spread(1);
+      else {scene.current?.spread(1);hovered.current?.classList.remove('uv-hand-hover');hovered.current = null;}
     }
-  }, [select]);
+  }, [under, click]);
+  // Lets a browser test feed gestures without a camera. Only with #handtest in the address.
+  useEffect(() => {
+    if (window.location.hash !== '#handtest') return;
+    (window as unknown as {moonsHand: object}).moonsHand = {gesture, probe};
+  }, [gesture, probe]);
   const fullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
     else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -75,6 +106,7 @@ export default function LivePage({space}: {space: SpaceInfo}) {
       if (event.key === 'd') setTheme(value => themes[(themes.indexOf(value) + 1) % themes.length]);
       if (event.key === 'f') fullscreen();
       if (event.key === 'h') setHands(value => !value);
+      if (event.key === 'r') scene.current?.resetPlanets(); // put hand-placed planets back
       if (event.key === 'Escape') reset();
     };
     window.addEventListener('keydown', key);
@@ -101,7 +133,7 @@ export default function LivePage({space}: {space: SpaceInfo}) {
         {linkKinds.map(kind => <li key={kind}><i className={kind}/>{linkLabels[kind]}</li>)}
         <li><i className="ring"/>아직 모르는 곳이 있는 생각</li>
       </ul></details>
-      {theme === 'cosmos' && sceneReady && <HandControl active={hands} onEvents={gesture} onClose={() => setHands(false)}/>}
+      {theme === 'cosmos' && sceneReady && <HandControl active={hands} onEvents={gesture} probe={probe} onClose={() => setHands(false)}/>}
       <ThoughtInspector data={view} selection={visibleSelection} showList={showList} onClose={reset} onSelect={select}/>
       {!visibleSelection && !showList && <div className="lv-ticker">
         {latest ? <><span>최근 생각 · {timeLabel(latest.createdAt)}</span><p>“{latest.preview}”</p></>

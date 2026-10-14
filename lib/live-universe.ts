@@ -20,11 +20,12 @@ function seedFor(text: string) {
 }
 
 // Identity-based positions do not jump when polling adds, removes, or reorders other thoughts.
-export function layoutUniverse(data: UniverseDTO): UniverseLayout3 {
+// `placed` holds planets someone moved by hand; their thoughts move with them.
+export function layoutUniverse(data: UniverseDTO, placed: Record<string, Position3> = {}): UniverseLayout3 {
   const visible = data.thoughts.filter(thought => thought.status !== 'held');
   const clusters = data.space.planets.map(planet => ({
     ...planet,
-    position: [(planet.x - .5) * 130, (.5 - planet.y) * 85, -22 + seededRandom(seedFor(planet.id))() * 38] as Position3,
+    position: placed[planet.id] ?? [(planet.x - .5) * 130, (.5 - planet.y) * 85, -22 + seededRandom(seedFor(planet.id))() * 38] as Position3,
     count: visible.filter(thought => thought.status === 'done' && thought.planetIds.includes(planet.id)).length,
   }));
   const byPlanet = new Map(clusters.map(planet => [planet.id, planet]));

@@ -158,3 +158,4 @@
 @media (max-width: 650px) {
   .uv-cam { top: 70px; bottom: auto; right: 16px; width: 150px; }
 }
+.uv-hand-hover { outline: 2px solid #ffe2aa; outline-offset: 4px; border-radius: 10px; box-shadow: 0 0 18px #ffd28c66; }

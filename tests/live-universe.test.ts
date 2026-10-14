@@ -65,3 +65,19 @@ test('real link kinds, endpoints and degrees survive layout without inventing re
   assert.deepEqual(selectionPosition(layout, {kind: 'planet', id: 'a'}), layout.clusters[0].position);
   assert.deepEqual(selectionPosition(layout, {kind: 'thought', id: 'a'}), layout.stars[0].position);
 });
+
+test('a planet moved by hand takes its thoughts along', async () => {
+  const {layoutUniverse} = await import('../lib/live-universe.ts');
+  const data = {
+    space: {id: 's', name: '', tagline: '', planets: [{id: 'a', name: 'A', color: '#fff', x: .3, y: .5}, {id: 'b', name: 'B', color: '#fff', x: .7, y: .5}], questions: []},
+    thoughts: [{id: 't1', kind: 'spark', status: 'done', preview: '', planetIds: ['a'], openSignals: 0, structure: null, createdAt: ''},
+      {id: 't2', kind: 'spark', status: 'done', preview: '', planetIds: ['b'], openSignals: 0, structure: null, createdAt: ''}],
+    links: [], stats: {thoughts: 2, links: 0, openSignals: 0}, now: '',
+  } as unknown as Parameters<typeof layoutUniverse>[0];
+  const before = layoutUniverse(data), after = layoutUniverse(data, {a: [10, 20, 30]});
+  assert.deepEqual(after.clusters[0].position, [10, 20, 30]);
+  const shift = (i: number, axis: number) => after.stars[i].position[axis] - before.stars[i].position[axis];
+  const a0 = before.clusters[0].position;
+  assert.ok(Math.abs(shift(0, 0) - (10 - a0[0])) < 1e-9 && Math.abs(shift(0, 1) - (20 - a0[1])) < 1e-9);
+  assert.deepEqual(after.stars[1].position, before.stars[1].position);
+});

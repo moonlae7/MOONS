@@ -82,3 +82,16 @@ test('one tap, a slow tap pair, or a fist is not a double tap', () => {
   const fist = run(new GestureTracker(), [hand(), hand(), hand({curl: 1}), hand(), hand({curl: 1}), hand()]);
   assert.equal(fist.some(e => e.type === 'doubleTap'), false);
 });
+
+test('a real pinch clicks where the index pointed before closing, not where it closed', () => {
+  const open = hand();
+  const meet = {x: (open[4].x + open[8].x) / 2, y: (open[4].y + open[8].y) / 2};
+  const closed = hand(); closed[4] = {...meet}; closed[8] = {x: meet.x + 0.005, y: meet.y};
+  const g = new GestureTracker();
+  const events = run(g, [open, open, open, open, open, closed, closed, closed, open, open]);
+  const click = events.find(e => e.type === 'select');
+  assert.ok(click && click.type === 'select');
+  assert.ok(Math.abs(click.x - (1 - open[8].x)) < 0.02 && Math.abs(click.y - open[8].y) < 0.02, JSON.stringify(click));
+  assert.equal(events.some(e => e.type === 'orbit'), false);
+  assert.deepEqual(events.filter(e => e.type === 'pinchStart' || e.type === 'pinchEnd').map(e => e.type), ['pinchStart', 'pinchEnd']);
+});

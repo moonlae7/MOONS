@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {selectionPosition, type UniverseLayout3, type UniverseSelection} from '@/lib/live-universe';
+import {selectionPosition, type Position3, type UniverseLayout3, type UniverseSelection} from '@/lib/live-universe';
 import {createNebula} from './nebula';
 import {createConnections, createStarfield, createThoughts, disposeObject} from './particles';
 
@@ -187,6 +187,31 @@ export function createUniverse(host: HTMLDivElement, callbacks: Callbacks) {
     reset() {focus(null);},
     rotate(horizontal: number, vertical: number) {
       flight = null;controls.rotateLeft(horizontal);controls.rotateUp(vertical);invalidate();
+    },
+    // The star or planet drawn closest to a screen point (x, y 0..1), within `radius` pixels. Hands are not precise.
+    nearest(x: number, y: number, radius: number, planetsOnly = false) {
+      const width = host.clientWidth, height = host.clientHeight, point = new THREE.Vector3();
+      let best: {selection: UniverseSelection; x: number; y: number; distance: number} | null = null;
+      const consider = (selection: NonNullable<UniverseSelection>, position: Position3) => {
+        point.set(...position).multiplyScalar(spread).project(camera);
+        if (point.z < -1 || point.z > 1) return;
+        const sx = (point.x * .5 + .5), sy = (-point.y * .5 + .5);
+        const distance = Math.hypot((sx - x) * width, (sy - y) * height);
+        if (distance <= radius && (!best || distance < best.distance)) best = {selection, x: sx, y: sy, distance};
+      };
+      for (const cluster of layout.clusters) consider({kind: 'planet', id: cluster.id}, cluster.position);
+      if (!planetsOnly) for (const star of layout.stars) consider({kind: 'thought', id: star.id}, star.position);
+      return best as {selection: UniverseSelection; x: number; y: number; distance: number} | null;
+    },
+    // Where a planet lands if the hand holds it at screen point (x, y): same depth from the camera, under the hand.
+    planetPoint(id: string, x: number, y: number): Position3 | null {
+      const cluster = layout.clusters.find(c => c.id === id);
+      if (!cluster) return null;
+      const at = new THREE.Vector3(...cluster.position).multiplyScalar(spread);
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), at);
+      raycaster.setFromCamera(new THREE.Vector2(x * 2 - 1, -y * 2 + 1), camera);
+      const hit = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      return hit ? hit.divideScalar(spread).toArray() as Position3 : null;
     },
     // 1 is the normal layout; below pulls every thought toward the center, above spreads them out.
     spread(value: number) {spreadTarget = THREE.MathUtils.clamp(value, .08, 1.6);invalidate();},

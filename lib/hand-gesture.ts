@@ -1,23 +1,26 @@
 // Hand gestures for the universe screen, read from MediaPipe's 21 hand landmarks
 // (x and y are 0..1 of the camera frame; 0 wrist, 4 thumb tip, 5 index knuckle, 8 index tip, 9 middle knuckle, 12/16/20 other tips).
 // The cursor is the index fingertip.
-//   pinch thumb and index, release quickly  -> select what is under the cursor
-//   pinch and move                           -> turn the universe
+//   pinch thumb and index, release quickly  -> click what is under the cursor
+//   pinch and move                           -> turn the universe, or carry the planet the pinch started on
 //   close the hand / open it                 -> pull the stars in / spread them out
 //   tap twice with the index finger          -> click what is under the cursor (open a link, close a card)
 export type Point = {x: number; y: number};
 export type HandFrame = {cursor: Point; pinching: boolean; openness: number; index: number; middle: number; thumbGap: number; points: Point[]};
 export type GestureEvent =
-  | {type: 'select'; x: number; y: number}
+  | {type: 'pinchStart'; x: number; y: number}            // where the finger pointed just before pinching
+  | {type: 'select'; x: number; y: number}                // quick pinch and release: a click
+  | {type: 'pinchEnd'; dragged: boolean}
   | {type: 'doubleTap'; x: number; y: number}
-  | {type: 'orbit'; dx: number; dy: number}
+  | {type: 'orbit'; dx: number; dy: number; x: number; y: number} // drag step, and where the dragged point is now
   | {type: 'spread'; value: number}
   | {type: 'lost'};
 
 const PINCH_ON = 0.3, PINCH_OFF = 0.45;   // thumb-index gap, in palm lengths (with hysteresis)
 const FIST = 1.05, OPEN = 1.7;            // average fingertip reach from the wrist, in palm lengths
-const MOVE = 0.03;                        // cursor travel that turns a pinch into a drag
+const MOVE = 0.04;                        // pinch travel that turns a pinch into a drag
 const TAP_MS = 1000, LOST_MS = 400;
+const AIM_MS = 220;                       // closing the pinch moves the index tip: aim from just before
 const DIP = 0.72, BACK = 0.88;            // index length falls below / returns above this share of its usual length
 const POKE_MS = 450, DOUBLE_MS = 800, NEAR = 0.08;
 
@@ -43,8 +46,10 @@ export function readHand(landmarks: Point[], wasPinching: boolean): HandFrame {
 export class GestureTracker {
   private pinching = false;
   private cursor: Point | null = null;
-  private pinchStart: {at: Point; time: number} | null = null;
+  private pinchStart: {at: Point; mid: Point; time: number} | null = null;
   private dragged = false;
+  private mid: Point | null = null;         // thumb-index midpoint: steady while pinched
+  private trail: {time: number; at: Point}[] = [];
   private seen = 0;
   private gone = true;
   // Index taps: the finger dips quickly while the middle finger stays where it was.
@@ -58,7 +63,8 @@ export class GestureTracker {
     const events: GestureEvent[] = [];
     if (!landmarks || landmarks.length < 21) {
       if (!this.gone && now - this.seen > LOST_MS) {
-        this.gone = true; this.pinching = false; this.pinchStart = null; this.cursor = null;
+        if (this.pinchStart) events.push({type: 'pinchEnd', dragged: this.dragged});
+        this.gone = true; this.pinching = false; this.pinchStart = null; this.cursor = null; this.mid = null; this.trail = [];
         this.indexBase = 0; this.middleBase = 0; this.poke = null; this.lastTap = null; this.steady = null;
         events.push({type: 'lost'});
       }
@@ -70,13 +76,23 @@ export class GestureTracker {
     const previous = this.cursor;
     this.cursor = previous ? {x: previous.x + (frame.cursor.x - previous.x) * 0.5, y: previous.y + (frame.cursor.y - previous.y) * 0.5} : frame.cursor;
     frame.cursor = this.cursor;
+    this.trail.push({time: now, at: this.cursor});
+    while (this.trail.length > 1 && now - this.trail[0].time > AIM_MS) this.trail.shift();
+    const rawMid = {x: (frame.points[4].x + frame.points[8].x) / 2, y: (frame.points[4].y + frame.points[8].y) / 2};
+    const lastMid = this.mid;
+    this.mid = lastMid ? {x: lastMid.x + (rawMid.x - lastMid.x) * 0.5, y: lastMid.y + (rawMid.y - lastMid.y) * 0.5} : rawMid;
 
-    if (frame.pinching && !this.pinching) { this.pinchStart = {at: this.cursor, time: now}; this.dragged = false; }
-    else if (frame.pinching && this.pinchStart && previous) {
-      if (!this.dragged && gap(this.cursor, this.pinchStart.at) > MOVE) this.dragged = true;
-      if (this.dragged) events.push({type: 'orbit', dx: this.cursor.x - previous.x, dy: this.cursor.y - previous.y});
+    if (frame.pinching && !this.pinching) {
+      const aim = this.trail[0].at;
+      this.pinchStart = {at: aim, mid: this.mid, time: now}; this.dragged = false;
+      events.push({type: 'pinchStart', ...aim});
+    } else if (frame.pinching && this.pinchStart && lastMid) {
+      const moved = {x: this.mid.x - this.pinchStart.mid.x, y: this.mid.y - this.pinchStart.mid.y};
+      if (!this.dragged && Math.hypot(moved.x, moved.y) > MOVE) this.dragged = true;
+      if (this.dragged) events.push({type: 'orbit', dx: this.mid.x - lastMid.x, dy: this.mid.y - lastMid.y, x: this.pinchStart.at.x + moved.x, y: this.pinchStart.at.y + moved.y});
     } else if (!frame.pinching && this.pinching && this.pinchStart) {
       if (!this.dragged && now - this.pinchStart.time < TAP_MS) events.push({type: 'select', ...this.pinchStart.at});
+      events.push({type: 'pinchEnd', dragged: this.dragged});
       this.pinchStart = null;
     }
     if (!frame.pinching) events.push({type: 'spread', value: frame.openness});
