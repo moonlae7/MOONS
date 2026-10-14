@@ -38,6 +38,16 @@ npm start          # http://127.0.0.1:3000
 모델은 기본값 `gpt-5.4-mini`(구조화·연결), `gpt-5.4`(갈림길), `gpt-4o-transcribe`(음성), `text-embedding-3-small`(연결). 바꿀 때는 환경변수로.
 연결이 너무 적거나 많으면 `LINK_THRESHOLD`(기본 0.36)를 바꾸고 `/api/admin/relink`를 POST로 호출한다.
 
+## Vercel 연결 (한 줄)
+
+본인 컴퓨터 터미널에 아래 한 줄을 붙여넣고, OpenAI API 키만 입력한다. Node.js 20.19 이상 필요.
+
+```sh
+node -e "fetch('https://raw.githubusercontent.com/moonlae7/MOONS/main/scripts/connect-vercel.mjs').then(r=>r.text()).then(t=>import('data:text/javascript;base64,'+Buffer.from(t).toString('base64')))"
+```
+
+`scripts/connect-vercel.mjs`가 하는 일: 키와 모델 확인, Vercel 로그인(처음 한 번), DB가 없으면 Neon 임시 Postgres 생성(`neon claim create`), `OPENAI_API_KEY`·`DATABASE_URL`·`ADMIN_TOKEN`을 production에 저장, 재배포, `/api/spaces/hackathon-1014/universe` 응답 확인. 새로 만든 ADMIN_TOKEN은 마지막에 한 번만 보여준다. 임시 DB를 계속 쓰려면 `npx neon@latest claim accept`.
+
 ## Replit 배포 (사용이 필수라면)
 
 1. Replit에서 GitHub 저장소를 가져오거나 폴더를 올린다.
