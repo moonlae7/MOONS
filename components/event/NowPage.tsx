@@ -30,25 +30,34 @@ export default function NowPage({questions}: {questions: Question[]}) {
   const [error, setError] = useState('');
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [fromVoice, setFromVoice] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), tick = useRef<ReturnType<typeof setInterval> | null>(null);
+  const box = useRef<HTMLTextAreaElement | null>(null);
   const card = cards[index];
 
   useEffect(() => { try { setNickname(localStorage.getItem('moons.nickname') ?? ''); } catch {} return () => { if (tick.current) clearInterval(tick.current); recorder.current?.stream.getTracks().forEach(t => t.stop()); }; }, []);
 
-  async function submit(audio?: Blob) {
-    setError(''); setBusy(audio ? 'voice' : 'text');
+  // Voice goes into the answer box first, so people can check and fix it before sending.
+  async function transcribe(audio: Blob) {
+    setError(''); setBusy('voice');
+    try {
+      const form = new FormData();
+      form.append('participantId', participantId());
+      form.append('audio', audio, audio.type.includes('mp4') ? 'voice.mp4' : audio.type.includes('ogg') ? 'voice.ogg' : 'voice.webm');
+      const res = await api<{text: string}>('/api/transcribe', {method: 'POST', body: form});
+      setText(prev => `${prev.trim() ? `${prev.trimEnd()} ` : ''}${res.text}`.slice(0, MAX_CHARS));
+      setFromVoice(true);
+      setTimeout(() => box.current?.focus(), 50);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(''); }
+  }
+
+  async function submit() {
+    setError(''); setBusy('text');
     try { localStorage.setItem('moons.nickname', nickname); } catch {}
     try {
-      let res: Sent;
-      if (audio) {
-        const form = new FormData();
-        form.append('participantId', participantId()); form.append('nickname', nickname); form.append('questionId', card.id); form.append('text', '');
-        form.append('audio', audio, audio.type.includes('mp4') ? 'voice.mp4' : audio.type.includes('ogg') ? 'voice.ogg' : 'voice.webm');
-        res = await api<Sent>(`/api/spaces/${SPACE_ID}/entries`, {method: 'POST', body: form});
-      } else {
-        res = await api<Sent>(`/api/spaces/${SPACE_ID}/entries`, postJson({participantId: participantId(), nickname, questionId: card.id || null, text}));
-      }
-      setText('');
+      const res = await api<Sent>(`/api/spaces/${SPACE_ID}/entries`, postJson({participantId: participantId(), nickname, questionId: card.id || null, text, input: fromVoice ? 'voice' : 'text'}));
+      setText(''); setFromVoice(false);
       // Straight to the scan: the result page waits for the structure, then shows it.
       router.push(`/t/${res.id}?scan=1${res.redacted ? `&r=${res.redacted}` : ''}`);
     } catch (e) { setError((e as Error).message); }
@@ -70,7 +79,7 @@ export default function NowPage({questions}: {questions: Question[]}) {
         if (tick.current) clearInterval(tick.current);
         setRecording(false);
         const blob = new Blob(chunks.current, {type: mime.split(';')[0]});
-        if (blob.size > 2000) submit(blob); else setError('너무 짧아요. 조금 더 길게 말해주세요.');
+        if (blob.size > 2000) transcribe(blob); else setError('너무 짧아요. 조금 더 길게 말해주세요.');
       };
       recorder.current = r; r.start(); setRecording(true); setSeconds(0);
       const startedAt = Date.now();
@@ -100,15 +109,16 @@ export default function NowPage({questions}: {questions: Question[]}) {
 
       <form className="now-form" onSubmit={e => { e.preventDefault(); if (text.trim()) submit(); }}>
         <label htmlFor="now-text" className="sr-only">생각</label>
-        <textarea id="now-text" value={text} onChange={e => setText(e.target.value)} maxLength={MAX_CHARS} rows={5} placeholder={recording ? '듣고 있어요…' : `말하거나 적어주세요. ${MAX_CHARS}자까지, 정리 안 해도 돼요.`} disabled={recording || !!busy}/>
+        <textarea id="now-text" ref={box} value={text} onChange={e => setText(e.target.value)} maxLength={MAX_CHARS} rows={5} placeholder={recording ? '듣고 있어요…' : `말하거나 적어주세요. ${MAX_CHARS}자까지, 정리 안 해도 돼요.`} disabled={recording || !!busy}/>
         <span className="now-count" aria-live="polite">{text.length} / {MAX_CHARS}</span>
         <div className="now-buttons">
           <button type="button" className={`now-mic ${recording ? 'on' : ''}`} onClick={toggleRecord} disabled={!!busy} aria-pressed={recording}>
-            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>알아듣는 중…</> : <><Mic size={17}/>말로 답하기</>}
+            {recording ? <><Square size={16}/>{seconds}초 · 눌러서 끝내기</> : busy === 'voice' ? <><LoaderCircle size={17} className="spin"/>받아쓰는 중…</> : <><Mic size={17}/>말로 답하기</>}
           </button>
           <button type="submit" className="now-send" disabled={!text.trim() || !!busy || recording} aria-label="스캔하기">{busy === 'text' ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
         </div>
       </form>
+      {fromVoice && text.trim() && !busy && <p className="ev-note" role="status">받아쓴 내용이 맞는지 확인해 주세요. 틀린 곳은 고친 뒤 보내면 돼요.</p>}
       {error && <p className="ev-error" role="alert">{error}</p>}
 
       <details className="now-name"><summary>이름 남기기 (선택)</summary>

@@ -1,6 +1,11 @@
 import {AIError, type Embedder, type JsonTask, type MoonsAI} from './provider.ts';
 
 const BASE = 'https://api.openai.com/v1';
+const HANGUL = /[\uAC00-\uD7A3]/;
+// Context for the speech model: Korean answers about the hackathon, English terms mixed in.
+const SPEECH_HINT = '해커톤 파이어사이드 챗에 대한 한국어 소감입니다. AI, API, OpenAI 같은 영어 단어가 섞일 수 있어요.';
+// Lines speech models invent on near-silence. Treated as nothing heard.
+const PHANTOM = /시청해\s*주셔서\s*감사합니다|구독과\s*좋아요|자막\s*(제공|by)|MBC\s*뉴스|thanks?\s+for\s+watching/i;
 
 function key() {
   const k = process.env.OPENAI_API_KEY;
@@ -43,13 +48,22 @@ export const openai: MoonsAI = {
     catch { throw new AIError('Model returned invalid JSON', 'PARSE_FAILED'); }
   },
   async transcribe(audio, filename) {
-    const form = new FormData();
-    form.append('file', audio, filename);
-    form.append('model', process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe');
-    form.append('language', 'ko');
-    const res = await call('/audio/transcriptions', {method: 'POST', body: form}, 60000);
-    const body = await res.json() as {text?: string};
-    return (body.text ?? '').trim();
+    const once = async (model: string) => {
+      const form = new FormData();
+      form.append('file', audio, filename);
+      form.append('model', model);
+      form.append('language', 'ko');
+      form.append('prompt', SPEECH_HINT);
+      const res = await call('/audio/transcriptions', {method: 'POST', body: form}, 60000);
+      const text = ((await res.json() as {text?: string}).text ?? '').trim();
+      return PHANTOM.test(text) && text.length < 40 ? '' : text;
+    };
+    const primary = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
+    const text = await once(primary);
+    if (HANGUL.test(text) || primary === 'whisper-1') return text;
+    // Korean speech sometimes comes back as a short English line. Ask Whisper once more and keep Korean if it hears it.
+    try { const again = await once('whisper-1'); if (HANGUL.test(again)) return again; } catch {}
+    return text;
   },
   async moderate(text) {
     try {
